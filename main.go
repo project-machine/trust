@@ -5,8 +5,8 @@ import (
 	"os"
 
 	"github.com/apex/log"
-	tpm2 "github.com/canonical/go-tpm2"
-	tlinux "github.com/canonical/go-tpm2/linux"
+	"github.com/urfave/cli"
+	"github.com/project-machine/trust/lib"
 )
 
 // commands:
@@ -15,20 +15,41 @@ import (
 //      "cert", "key", "atx", "sbskey"
 //   initrd - read data from tpm, extend pcr7
 //   intrd-setup - create new luks key, extend pcr7
+var tpmReadCmd = cli.Command{
+	Name: "tpm-read",
+	Usage: "Debug tpm state",
+	Action: doTpmRead,
+}
+
+func doTpmRead(ctx *cli.Context) error {
+	t := lib.NewTpm2()
+	v, err := t.TpmLayoutVersion()
+	if err != nil {
+		return err
+	}
+	fmt.Printf("TPM layout version: %s.\n", v)
+
+	v, err = t.TpmEAVersion()
+	if err != nil {
+		return err
+	}
+	fmt.Printf("EA Policy version: %s.\n", v)
+
+	return nil
+}
+
+const Version = "0.01"
 
 func main() {
-	tcti, err := tlinux.OpenDevice("/dev/tpm0")
-	if err != nil {
-		log.Errorf("Error opening tpm device: %v", err)
-		os.Exit(1)
+	app := cli.NewApp()
+	app.Name = "trust"
+	app.Usage = "Manage the trustroot"
+	app.Version = Version
+	app.Commands = []cli.Command{
+		tpmReadCmd,
 	}
-	tpm := tpm2.NewTPMContext(tcti)
-	defer tpm.Close()
-	index, err := tpm.CreateResourceContextFromTPM(0x1c0000a)
-	if err != nil {
-		log.Errorf("Error creating resource")
-		os.Exit(1)
+
+	if err := app.Run(os.Args); err != nil {
+		log.Fatalf("%v\n", err)
 	}
-	u, name, err := tpm.NVReadPublic(index)
-	fmt.Printf("%v %#v %#v", err, u, name)
 }
