@@ -137,32 +137,44 @@ func (t *tpm2Trust) Provision(certPath, keyPath string) error {
 		log.Warnf("Unable to save admin passphrase in backup file")
 	}
 
+	// Actually set the TPM admin password
+	setPassContexts := []namedContext{
+		namedContext{name: "owner", resource: tpm.OwnerHandleContext()},
+		namedContext{name: "endorsement", resource: tpm.EndorsementHandleContext()},
+		namedContext{name: "lockout", resource: tpm.LockoutHandleContext()},
+	}
+	for _, c := range setPassContexts {
+		err = tpm.HierarchyChangeAuth(c.resource, []byte(tpmPass), nil)
+		if err != nil {
+			return errors.Wrapf(err, "Failed resetting password for %s", c.name)
+		}
+	}
+
 	pk, err := loadPubkey(tpm, dataDir, keyClass, "tpmpass")
 	if err != nil {
 		return err
 	}
 
-	sess, err := tpm.StartAuthSession(pk, nil, tpm2.SessionTypeTrial, nil, tpm2.HashAlgorithmSHA256)
-	if err != nil {
-		return err
-	}
-
-	err = tpm.PolicyAuthorize(sess, tpm2.Digest{}, tpm2.Nonce{}, pk.Name(), nil)
-	if err != nil {
-		return errors.Wrapf(err, "Failed authorizing trial policy for tpm admin password")
-	}
+	tp := tutil.ComputeAuthPolicy(tpm2.HashAlgorithmSHA256)
+	tp.PolicyAuthorize([]byte("foo"), pk.Name())
+	d := tp.GetDigest()
 
 	nvpub := tpm2.NVPublic{
-		Index: 0x1500001,
+		Index: tpm2.Handle(TPM2IndexPassword),
 		NameAlg:    tpm2.HashAlgorithmSHA256,
 		Attrs:      tpm2.NVTypeOrdinary.WithAttrs(tpm2.AttrNVPolicyRead | tpm2.AttrNVOwnerWrite | tpm2.AttrNVOwnerRead),
-		AuthPolicy: tpm2.Digest{},
-		Size: 8,
+		AuthPolicy: d,
+		Size: 32,
 	}
 
-	_, err = tpm.NVDefineSpace(pk, tpm2.HandleOwner, nil, nvpub)
+	rc, err := tpm.NVDefineSpace(tpm.OwnerHandleContext(), tpm2.Auth([]byte(tpmPass)), &nvpub, nil)
 	if err != nil {
 		return errors.Wrapf(err, "Failed defining tpm password nvindex")
+	}
+
+	err = tpm.NVWrite(tpm.OwnerHandleContext(), rc, []byte(tpmPass), 0, nil)
+	if err != nil {
+		return errors.Wrapf(err, "Failed writing the tpm password")
 	}
 
 	return errors.Errorf("Not yet implemented")
