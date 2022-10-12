@@ -46,6 +46,12 @@ func genPassphrase() (string, error) {
 }
 
 type tpm2Trust struct {
+	// During provisioning
+	adminPwd string
+	keyClass string
+	dataDir  string
+	tpm      *tpm2.TPMContext
+
 }
 
 func NewTpm2() *tpm2Trust {
@@ -83,12 +89,70 @@ func loadPubkey(tpm *tpm2.TPMContext, dataDir, keyClass, poltype string) (tpm2.R
 
 }
 
+func (t *tpm2Trust) CreateIndex(idx NVIndex, len uint16, value []byte, attrs tpm2.NVAttributes) error {
+	nvpub := tpm2.NVPublic{
+		Index: tpm2.Handle(idx),
+		NameAlg:    tpm2.HashAlgorithmSHA256,
+		Attrs:      attrs,
+		Size: len,
+	}
+
+	rc, err := t.tpm.NVDefineSpace(t.tpm.OwnerHandleContext(), tpm2.Auth([]byte(value)), &nvpub, nil)
+	if err != nil {
+		return errors.Wrapf(err, "Failed defining tpm password nvindex")
+	}
+
+	err = t.tpm.NVWrite(t.tpm.OwnerHandleContext(), rc, []byte{}, 0, nil)
+	if err != nil {
+		return errors.Wrapf(err, "Failed writing the tpm password")
+	}
+
+	return nil
+}
+
+func (t *tpm2Trust) CreateEAIndex(idx NVIndex, len uint16, value []byte, attrs tpm2.NVAttributes, tpmPass []byte) error {
+	pubkeyname := "luks"
+	if idx == TPM2IndexPassword {
+		pubkeyname = "tpmpass"
+	}
+	pk, err := loadPubkey(t.tpm, t.dataDir, t.keyClass, pubkeyname)
+	if err != nil {
+		return err
+	}
+
+	tp := tutil.ComputeAuthPolicy(tpm2.HashAlgorithmSHA256)
+	tp.PolicyAuthorize([]byte(""), pk.Name())
+	d := tp.GetDigest()
+
+	nvpub := tpm2.NVPublic{
+		Index: tpm2.Handle(idx),
+		NameAlg:    tpm2.HashAlgorithmSHA256,
+		Attrs:      attrs,
+		AuthPolicy: d,
+		Size: len,
+	}
+
+	rc, err := t.tpm.NVDefineSpace(t.tpm.OwnerHandleContext(), tpm2.Auth([]byte(value)), &nvpub, nil)
+	if err != nil {
+		return errors.Wrapf(err, "Failed defining tpm password nvindex")
+	}
+
+	err = t.tpm.NVWrite(t.tpm.OwnerHandleContext(), rc, []byte(tpmPass), 0, nil)
+	if err != nil {
+		return errors.Wrapf(err, "Failed writing the tpm password")
+	}
+
+	return nil
+}
+
 func (t *tpm2Trust) Provision(certPath, keyPath string) error {
 	dataDir, keyClass, err := ChooseSignData()
 	if err != nil {
 		return err
 	}
 	log.Infof("Signdata: keyclass %s datadir %s", keyClass, dataDir)
+	t.keyClass = keyClass
+	t.dataDir = dataDir
 
 	tcti, err := tlinux.OpenDevice("/dev/tpm0")
 	if err != nil {
@@ -97,6 +161,7 @@ func (t *tpm2Trust) Provision(certPath, keyPath string) error {
 	}
 	tpm := tpm2.NewTPMContext(tcti)
 	defer tpm.Close()
+	t.tpm = tpm
 
 	log.Infof("Taking ownership of TPM.")
 	type namedContext struct {
@@ -123,6 +188,19 @@ func (t *tpm2Trust) Provision(certPath, keyPath string) error {
 		return errors.Errorf("Failed to clear the tpm")
 	}
 
+	verStr := fmt.Sprintf("%08d", TpmLayoutVersion)
+	attrs := tpm2.NVTypeOrdinary.WithAttrs(tpm2.AttrNVAuthRead|tpm2.AttrNVOwnerWrite|tpm2.AttrNVOwnerRead)
+	err = t.CreateIndex(TPM2IndexTPMVersion, uint16(len(verStr)), []byte(verStr), attrs)
+	if err != nil {
+		return errors.Wrapf(err, "Failed to set tpm layout version")
+	}
+
+	verStr = fmt.Sprintf("%s", PolicyVersion)
+	err = t.CreateIndex(TPM2IndexEAVersion, uint16(len(verStr)), []byte(verStr), attrs)
+	if err != nil {
+		return errors.Wrapf(err, "Failed to set tpm EA policy version")
+	}
+
 	tpmPass, err := genPassphrase()
 	if err != nil {
 		return err
@@ -130,6 +208,7 @@ func (t *tpm2Trust) Provision(certPath, keyPath string) error {
 
 	// Admin password on some hardware can't be longer than 32.
 	tpmPass = tpmPass[:31]
+	t.adminPwd = tpmPass
 
 	// TODO - save only if debug requested?
 	err = os.WriteFile("/run/tpm-passphrase", []byte(tpmPass), 0600)
@@ -150,31 +229,11 @@ func (t *tpm2Trust) Provision(certPath, keyPath string) error {
 		}
 	}
 
-	pk, err := loadPubkey(tpm, dataDir, keyClass, "tpmpass")
+	attrs = tpm2.NVTypeOrdinary.WithAttrs(tpm2.AttrNVPolicyRead|tpm2.AttrNVOwnerWrite|tpm2.AttrNVOwnerRead)
+	b := []byte(t.adminPwd)
+	err = t.CreateEAIndex(TPM2IndexPassword, 32, b, attrs, b)
 	if err != nil {
-		return err
-	}
-
-	tp := tutil.ComputeAuthPolicy(tpm2.HashAlgorithmSHA256)
-	tp.PolicyAuthorize([]byte("foo"), pk.Name())
-	d := tp.GetDigest()
-
-	nvpub := tpm2.NVPublic{
-		Index: tpm2.Handle(TPM2IndexPassword),
-		NameAlg:    tpm2.HashAlgorithmSHA256,
-		Attrs:      tpm2.NVTypeOrdinary.WithAttrs(tpm2.AttrNVPolicyRead | tpm2.AttrNVOwnerWrite | tpm2.AttrNVOwnerRead),
-		AuthPolicy: d,
-		Size: 32,
-	}
-
-	rc, err := tpm.NVDefineSpace(tpm.OwnerHandleContext(), tpm2.Auth([]byte(tpmPass)), &nvpub, nil)
-	if err != nil {
-		return errors.Wrapf(err, "Failed defining tpm password nvindex")
-	}
-
-	err = tpm.NVWrite(tpm.OwnerHandleContext(), rc, []byte(tpmPass), 0, nil)
-	if err != nil {
-		return errors.Wrapf(err, "Failed writing the tpm password")
+		return errors.Wrapf(err, "Failed creating admin password nvindex")
 	}
 
 	return errors.Errorf("Not yet implemented")
