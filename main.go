@@ -38,6 +38,27 @@ func doTpmRead(ctx *cli.Context) error {
 	return nil
 }
 
+var provisionCmd = cli.Command{
+	Name: "provision",
+	Usage: "Provision a new system",
+	Action: doProvision,
+}
+
+func doProvision(ctx *cli.Context) error {
+	if ctx.NArg() != 2 {
+		return fmt.Errorf("Required arguments: certificate and key paths")
+	}
+
+	if !PathExists("/dev/tpm0") {
+		return fmt.Errorf("No TPM.  No other subsystems have been implemented")
+	}
+
+
+	t := lib.NewTpm2()
+	args := ctx.Args()
+	return t.Provision(args[0], args[1])
+}
+
 const Version = "0.01"
 
 func main() {
@@ -46,6 +67,7 @@ func main() {
 	app.Usage = "Manage the trustroot"
 	app.Version = Version
 	app.Commands = []cli.Command{
+		provisionCmd,
 		tpmReadCmd,
 	}
 
