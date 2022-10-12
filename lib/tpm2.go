@@ -51,11 +51,13 @@ type tpm2Trust struct {
 	keyClass string
 	dataDir  string
 	tpm      *tpm2.TPMContext
+	pubkeys  map[string]tpm2.ResourceContext
 
 }
 
 func NewTpm2() *tpm2Trust {
 	t := tpm2Trust{}
+	t.pubkeys = make(map[string]tpm2.ResourceContext)
 	return &t
 }
 
@@ -99,25 +101,32 @@ func (t *tpm2Trust) CreateIndex(idx NVIndex, len uint16, value []byte, attrs tpm
 
 	rc, err := t.tpm.NVDefineSpace(t.tpm.OwnerHandleContext(), tpm2.Auth([]byte(value)), &nvpub, nil)
 	if err != nil {
-		return errors.Wrapf(err, "Failed defining tpm password nvindex")
+		return errors.Wrapf(err, "Failed defining NVIndex %s", idx)
 	}
 
 	err = t.tpm.NVWrite(t.tpm.OwnerHandleContext(), rc, []byte{}, 0, nil)
 	if err != nil {
-		return errors.Wrapf(err, "Failed writing the tpm password")
+		return errors.Wrapf(err, "Failed writing NVIndex %s", idx)
 	}
 
 	return nil
 }
 
-func (t *tpm2Trust) CreateEAIndex(idx NVIndex, len uint16, value []byte, attrs tpm2.NVAttributes, tpmPass []byte) error {
+func (t *tpm2Trust) CreateEAIndex(idx NVIndex, l uint16, value []byte, attrs tpm2.NVAttributes) error {
+	var err error
+	log.Infof("writing %s length %d value %v", idx, l, value)
 	pubkeyname := "luks"
 	if idx == TPM2IndexPassword {
 		pubkeyname = "tpmpass"
 	}
-	pk, err := loadPubkey(t.tpm, t.dataDir, t.keyClass, pubkeyname)
-	if err != nil {
-		return err
+
+	pk, ok := t.pubkeys[pubkeyname]
+	if !ok {
+		pk, err = loadPubkey(t.tpm, t.dataDir, t.keyClass, pubkeyname)
+		if err != nil {
+			return errors.Wrapf(err, "Error loading public key")
+		}
+		t.pubkeys[pubkeyname] = pk
 	}
 
 	tp := tutil.ComputeAuthPolicy(tpm2.HashAlgorithmSHA256)
@@ -129,23 +138,34 @@ func (t *tpm2Trust) CreateEAIndex(idx NVIndex, len uint16, value []byte, attrs t
 		NameAlg:    tpm2.HashAlgorithmSHA256,
 		Attrs:      attrs,
 		AuthPolicy: d,
-		Size: len,
+		Size: l,
 	}
 
-	rc, err := t.tpm.NVDefineSpace(t.tpm.OwnerHandleContext(), tpm2.Auth([]byte(value)), &nvpub, nil)
+	rc, err := t.tpm.NVDefineSpace(t.tpm.OwnerHandleContext(), tpm2.Auth([]byte(t.adminPwd)), &nvpub, nil)
 	if err != nil {
-		return errors.Wrapf(err, "Failed defining tpm password nvindex")
+		return errors.Wrapf(err, "Failed defining nvindex %s", idx)
 	}
 
-	err = t.tpm.NVWrite(t.tpm.OwnerHandleContext(), rc, []byte(tpmPass), 0, nil)
+	err = t.tpm.NVWrite(t.tpm.OwnerHandleContext(), rc, value, 0, nil)
 	if err != nil {
-		return errors.Wrapf(err, "Failed writing the tpm password")
+		return errors.Wrapf(err, "Failed writing NVIndex %s", idx)
 	}
 
 	return nil
 }
 
 func (t *tpm2Trust) Provision(certPath, keyPath string) error {
+	// Store the provisioned cert and key
+	certBytes, err := os.ReadFile(certPath)
+	if err != nil {
+		return errors.Wrapf(err, "Failed reading provisioned certificate")
+	}
+
+	keyBytes, err := os.ReadFile(keyPath)
+	if err != nil {
+		return errors.Wrapf(err, "Failed reading provisioned key")
+	}
+
 	dataDir, keyClass, err := ChooseSignData()
 	if err != nil {
 		return err
@@ -231,12 +251,43 @@ func (t *tpm2Trust) Provision(certPath, keyPath string) error {
 
 	attrs = tpm2.NVTypeOrdinary.WithAttrs(tpm2.AttrNVPolicyRead|tpm2.AttrNVOwnerWrite|tpm2.AttrNVOwnerRead)
 	b := []byte(t.adminPwd)
-	err = t.CreateEAIndex(TPM2IndexPassword, 32, b, attrs, b)
+	err = t.CreateEAIndex(TPM2IndexPassword, 32, b, attrs)
 	if err != nil {
 		return errors.Wrapf(err, "Failed creating admin password nvindex")
 	}
 
-	return errors.Errorf("Not yet implemented")
+	err = t.CreateEAIndex(TPM2IndexCert, uint16(len(certBytes)), certBytes, attrs)
+	if err != nil {
+		return errors.Wrapf(err, "Failed writing provisioned certificate to TPM")
+	}
+
+	err = t.CreateEAIndex(TPM2IndexKey, uint16(len(keyBytes)), keyBytes, attrs)
+	if err != nil {
+		return errors.Wrapf(err, "Failed writing provisioned key to TPM")
+	}
+
+	// Create sbs luks passphrase
+	luksPwd, err := genPassphrase()
+	if err != nil {
+		return err
+	}
+	// TODO - actually create sbf
+	// Store sbf luks key
+	b = []byte(luksPwd)
+	err = t.CreateEAIndex(TPM2IndexSecret, uint16(len(luksPwd)), b, attrs)
+	if err != nil {
+		return errors.Wrapf(err, "Failed creating sbs password nvindex")
+	}
+
+	// Add policywrite to the attrs
+	attrs = tpm2.NVTypeOrdinary.WithAttrs(tpm2.AttrNVPolicyRead|tpm2.AttrNVOwnerWrite|tpm2.AttrNVOwnerRead|tpm2.AttrNVPolicyWrite)
+	// and write the install pwd template, which each install should overwrite
+	err = t.CreateEAIndex(TPM2IndexAtxSecret, uint16(len(AtxInitialPassphrase)), []byte(AtxInitialPassphrase), attrs)
+	if err != nil {
+		return errors.Wrapf(err, "Failed writing the install password nvindex")
+	}
+
+	return nil
 }
 
 func (t *tpm2Trust) InitrdSetup() error {
