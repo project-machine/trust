@@ -2,7 +2,7 @@ module github.com/project-machine/trust
 
 require (
 	github.com/apex/log v1.9.0
-	github.com/canonical/go-tpm2 v0.1.0
+	github.com/canonical/go-tpm2 v0.0.0-20220823192114-7a7993f0fa1f
 	github.com/pkg/errors v0.9.1
 	github.com/urfave/cli v1.22.5
 )

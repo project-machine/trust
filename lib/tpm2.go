@@ -3,11 +3,17 @@ package lib
 import (
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
+	"unsafe"
 
 	"github.com/apex/log"
 	"github.com/pkg/errors"
@@ -17,6 +23,23 @@ import (
 	tutil "github.com/canonical/go-tpm2/util"
 	templates "github.com/canonical/go-tpm2/templates"
 )
+
+var nativeEndian binary.ByteOrder
+
+func init() {
+	fmt.Printf("Init running\n")
+	buf := [2]byte{}
+	*(*uint16)(unsafe.Pointer(&buf[0])) = uint16(0xABCD)
+
+	switch buf {
+	case [2]byte{0xCD, 0xAB}:
+		nativeEndian = binary.LittleEndian
+	case [2]byte{0xAB, 0xCD}:
+		nativeEndian = binary.BigEndian
+	default:
+		panic("Could not determine native endianness.")
+	}
+}
 
 func HWRNGRead(size int) ([]byte, error) {
         rf, err := os.Open("/dev/hwrng")
@@ -61,14 +84,118 @@ func NewTpm2() *tpm2Trust {
 	return &t
 }
 
-func ChooseSignData() (string, string, error) {
-	return "", "", nil
+type KeyType string
+const (
+	limitedKey    KeyType = "limited"
+	productionKey KeyType = "production"
+	tpmpassKey    KeyType = "password"
+)
+
+type signDataInfo struct {
+	Class   string  `json:"key"`      // Was this pcr7 value from release, dev, or snakeoil keys
+	Type    KeyType `json:"key_type"` // Which of the three types of kernel signing keys
+	EstDate string  `json:"est_date"` // The 'established' date for this PCR7 value
+	Comment string  `json:"comment"`  // More information about the hardware+firmware
 }
 
-func loadPubkey(tpm *tpm2.TPMContext, dataDir, keyClass, poltype string) (tpm2.ResourceContext, error) {
+func (t *tpm2Trust)readHostPcr7() ([]byte, error) {
+	pcrSel := tpm2.PCRSelection{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7}}
+	pcrList := []tpm2.PCRSelection{pcrSel}
+	_, v, err := t.tpm.PCRRead(pcrList)
+	if err != nil {
+		return []byte{}, errors.Wrapf(err, "Failed reading pcr7")
+	}
+	if r, ok := v[tpm2.HashAlgorithmSHA256][7]; ok {
+		log.Infof("Found PCR7 %v", r)
+		return r, nil
+	}
+	return []byte{}, errors.Errorf("No sha256 value for pcr7 found")
+}
+
+func (t *tpm2Trust)curPcr7() (string, error) {
+	c, err := t.readHostPcr7()
+	if err != nil {
+		return "", errors.Errorf("Error reading host pcr7: %v", err)
+	}
+	if len(c) == 0 {
+		return "", errors.Errorf("host pcr7 was empty")
+	}
+	if nativeEndian == binary.LittleEndian {
+		for start := 0; start+1 < len(c); start += 2 {
+			tmp := c[start]
+			c[start] = c[start+1]
+			c[start+1] = tmp
+		}
+	}
+	ret := ""
+	for _, x := range c {
+		ret = ret + fmt.Sprintf("%02x", x)
+	}
+	return ret, nil
+}
+
+// /signdata/pcr7/ may have "policy-1", "policy-2", etc.  If
+// not, return "".  If so, return the policy-N for highest N.
+func (t *tpm2Trust)getPoldir(pdir string) string {
+	n := -1
+	dirname := ""
+	dents, err := os.ReadDir(pdir)
+	if err != nil {
+		return ""
+	}
+	for _, ent := range dents {
+		if !ent.IsDir() {
+			continue
+		}
+		f := ent.Name()
+		if !strings.HasPrefix(f, "policy-") {
+			continue
+		}
+		m, err := strconv.Atoi(f[7:])
+		if err != nil {
+			continue
+		}
+		if m > n {
+			n = m
+			dirname = filepath.Join(pdir, f)
+		}
+	}
+	return dirname
+}
+
+// Return the directory for *.bin and the key class (dev, release, or snakeoil).
+// The pubkeys will come from Dir(Dir(signdata))/pubkeys/luks-${class}.pem and
+// Dir(Dir(signdata))/pubkeys/tpmpass-${class}.pem and
+func (t *tpm2Trust) FindPCR7Data() (string, string, error) {
+	polDir := t.getPoldir("/pcr7data")
+	if polDir == "" {
+		return "", "", fmt.Errorf("no policy dir found")
+	}
+	pcr7, err := t.curPcr7()
+	if err != nil {
+		return "", "", err
+	}
+	pcr7Dir := filepath.Join(polDir, pcr7[:2], pcr7[2:])
+
+	var info signDataInfo
+	infoPath := filepath.Join(pcr7Dir, "info.json")
+	infoBytes, err := ioutil.ReadFile(infoPath)
+	if err != nil {
+		return "", "", err
+	}
+	err = json.Unmarshal(infoBytes, &info)
+	if err != nil {
+		return "", "", err
+	}
+
+	return pcr7Dir, info.Class, nil
+}
+
+
+func (t *tpm2Trust)loadPubkey(poltype string) (tpm2.ResourceContext, error) {
 	// pubkeys are stored under grandparent of datadir
-	p := filepath.Dir(filepath.Dir(dataDir))
-	fname := fmt.Sprintf("%s-%s.pem", poltype, keyClass)
+	p := filepath.Dir(filepath.Dir(t.dataDir))
+	fname := fmt.Sprintf("%s-%s.pem", poltype, t.keyClass)
 	p = filepath.Join(p, "pubkeys", fname)
 	bytes, err := os.ReadFile(p)
 	if err != nil {
@@ -87,7 +214,7 @@ func loadPubkey(tpm *tpm2.TPMContext, dataDir, keyClass, poltype string) (tpm2.R
 			templates.KeyUsageDecrypt,
 			nil,
 			pub.(*rsa.PublicKey))
-	return tpm.LoadExternal(nil, public, tpm2.HandleOwner)
+	return t.tpm.LoadExternal(nil, public, tpm2.HandleOwner)
 
 }
 
@@ -122,7 +249,7 @@ func (t *tpm2Trust) CreateEAIndex(idx NVIndex, l uint16, value []byte, attrs tpm
 
 	pk, ok := t.pubkeys[pubkeyname]
 	if !ok {
-		pk, err = loadPubkey(t.tpm, t.dataDir, t.keyClass, pubkeyname)
+		pk, err = t.loadPubkey(pubkeyname)
 		if err != nil {
 			return errors.Wrapf(err, "Error loading public key")
 		}
@@ -166,14 +293,6 @@ func (t *tpm2Trust) Provision(certPath, keyPath string) error {
 		return errors.Wrapf(err, "Failed reading provisioned key")
 	}
 
-	dataDir, keyClass, err := ChooseSignData()
-	if err != nil {
-		return err
-	}
-	log.Infof("Signdata: keyclass %s datadir %s", keyClass, dataDir)
-	t.keyClass = keyClass
-	t.dataDir = dataDir
-
 	tcti, err := tlinux.OpenDevice("/dev/tpm0")
 	if err != nil {
 		log.Errorf("Error opening tpm device: %v", err)
@@ -182,6 +301,15 @@ func (t *tpm2Trust) Provision(certPath, keyPath string) error {
 	tpm := tpm2.NewTPMContext(tcti)
 	defer tpm.Close()
 	t.tpm = tpm
+
+	dataDir, keyClass, err := t.FindPCR7Data()
+	if err != nil {
+		return err
+	}
+	log.Infof("Signdata: keyclass %s datadir %s", keyClass, dataDir)
+	t.keyClass = keyClass
+	t.dataDir = dataDir
+
 
 	log.Infof("Taking ownership of TPM.")
 	type namedContext struct {
