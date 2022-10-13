@@ -112,7 +112,7 @@ func (t *tpm2Trust)readHostPcr7() ([]byte, error) {
 	return []byte{}, errors.Errorf("No sha256 value for pcr7 found")
 }
 
-func (t *tpm2Trust)curPcr7() (string, error) {
+func (t *tpm2Trust) curPCR7() (string, error) {
 	c, err := t.readHostPcr7()
 	if err != nil {
 		return "", errors.Errorf("Error reading host pcr7: %v", err)
@@ -171,7 +171,7 @@ func (t *tpm2Trust) FindPCR7Data() (string, string, error) {
 	if polDir == "" {
 		return "", "", fmt.Errorf("no policy dir found")
 	}
-	pcr7, err := t.curPcr7()
+	pcr7, err := t.curPCR7()
 	if err != nil {
 		return "", "", err
 	}
@@ -435,6 +435,7 @@ func (t *tpm2Trust) TpmLayoutVersion() (string, error) {
 	}
 	tpm := tpm2.NewTPMContext(tcti)
 	defer tpm.Close()
+	t.tpm = tpm
 
 	// Read the layout version
 	index, err := tpm.CreateResourceContextFromTPM(tpm2.Handle(TPM2IndexTPMVersion))
@@ -454,6 +455,7 @@ func (t *tpm2Trust) TpmEAVersion() (string, error) {
 	}
 	tpm := tpm2.NewTPMContext(tcti)
 	defer tpm.Close()
+	t.tpm = tpm
 
 	// Read the layout version
 	index, err := tpm.CreateResourceContextFromTPM(tpm2.Handle(TPM2IndexEAVersion))
@@ -463,4 +465,35 @@ func (t *tpm2Trust) TpmEAVersion() (string, error) {
 	}
 	data, err := tpm.NVRead(index, index, 4, 0, nil)
 	return string(data), err
+}
+
+func (t *tpm2Trust) ExtendPCR7() error {
+	tcti, err := tlinux.OpenDevice("/dev/tpm0")
+	if err != nil {
+		log.Errorf("Error opening tpm device: %v", err)
+		os.Exit(1)
+	}
+	tpm := tpm2.NewTPMContext(tcti)
+	defer tpm.Close()
+	t.tpm = tpm
+
+	v, err := t.curPCR7()
+	log.Infof("Original pcr7 value: .%s. (error %v)", v, err)
+
+	hasher := tpm2.HashAlgorithmSHA256.NewHash()
+	hasher.Write([]byte("trust"))
+	hashE := tpm2.TaggedHash{HashAlg: tpm2.HashAlgorithmSHA256, Digest: hasher.Sum(nil)}
+	hashList := tpm2.TaggedHashList{hashE}
+	err = tpm.PCRExtend(tpm.PCRHandleContext(7), hashList, nil)
+	if err != nil {
+		return errors.Wrapf(err, "Failed extending pcr7")
+	}
+
+	v, err = t.curPCR7()
+	log.Infof("new pcr7 value: .%s. (error %v)", v, err)
+	return nil
+}
+
+func (t *tpm2Trust) TpmLuks() (string, error) {
+	return "", nil
 }

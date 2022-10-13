@@ -38,6 +38,18 @@ func doTpmRead(ctx *cli.Context) error {
 	return nil
 }
 
+var extendPCR7Cmd = cli.Command{
+	Name: "extend-pcr7",
+	Usage: "Extend TPM PCR7",
+	Action: doTpmExtend,
+}
+
+func doTpmExtend(ctx *cli.Context) error {
+	t := lib.NewTpm2()
+
+	return t.ExtendPCR7()
+}
+
 var provisionCmd = cli.Command{
 	Name: "provision",
 	Usage: "Provision a new system",
@@ -69,6 +81,7 @@ func main() {
 	app.Commands = []cli.Command{
 		provisionCmd,
 		tpmReadCmd,
+		extendPCR7Cmd,
 	}
 
 	if err := app.Run(os.Args); err != nil {
