@@ -27,7 +27,6 @@ import (
 var nativeEndian binary.ByteOrder
 
 func init() {
-	fmt.Printf("Init running\n")
 	buf := [2]byte{}
 	*(*uint16)(unsafe.Pointer(&buf[0])) = uint16(0xABCD)
 
@@ -81,7 +80,23 @@ type tpm2Trust struct {
 func NewTpm2() *tpm2Trust {
 	t := tpm2Trust{}
 	t.pubkeys = make(map[string]tpm2.ResourceContext)
+	tcti, err := tlinux.OpenDevice("/dev/tpm0")
+	if err != nil {
+		log.Errorf("Error opening tpm device: %v", err)
+		os.Exit(1)
+	}
+	tpm := tpm2.NewTPMContext(tcti)
+	t.tpm = tpm
+	err = t.EnsurePCR7Data()
+	if err != nil {
+		log.Warnf("Failed finding pcr7 data: %v", err)
+	}
+
 	return &t
+}
+
+func (t *tpm2Trust) Close() {
+	t.tpm.Close()
 }
 
 type KeyType string
@@ -192,7 +207,7 @@ func (t *tpm2Trust) FindPCR7Data() (string, string, error) {
 }
 
 
-func (t *tpm2Trust)loadPubkey(poltype string) (tpm2.ResourceContext, error) {
+func (t *tpm2Trust)loadPubkey(poltype string, purpose templates.KeyUsage) (tpm2.ResourceContext, error) {
 	// pubkeys are stored under grandparent of datadir
 	p := filepath.Dir(filepath.Dir(t.dataDir))
 	fname := fmt.Sprintf("%s-%s.pem", poltype, t.keyClass)
@@ -211,7 +226,7 @@ func (t *tpm2Trust)loadPubkey(poltype string) (tpm2.ResourceContext, error) {
 	}
 	public := tutil.NewExternalRSAPublicKey(
 			tpm2.HashAlgorithmSHA256,
-			templates.KeyUsageDecrypt,
+			purpose,
 			nil,
 			pub.(*rsa.PublicKey))
 	return t.tpm.LoadExternal(nil, public, tpm2.HandleOwner)
@@ -226,12 +241,12 @@ func (t *tpm2Trust) CreateIndex(idx NVIndex, len uint16, value []byte, attrs tpm
 		Size: len,
 	}
 
-	rc, err := t.tpm.NVDefineSpace(t.tpm.OwnerHandleContext(), tpm2.Auth([]byte(value)), &nvpub, nil)
+	rc, err := t.tpm.NVDefineSpace(t.tpm.OwnerHandleContext(), nil, &nvpub, nil)
 	if err != nil {
 		return errors.Wrapf(err, "Failed defining NVIndex %s", idx)
 	}
 
-	err = t.tpm.NVWrite(t.tpm.OwnerHandleContext(), rc, []byte{}, 0, nil)
+	err = t.tpm.NVWrite(t.tpm.OwnerHandleContext(), rc, value, 0, nil)
 	if err != nil {
 		return errors.Wrapf(err, "Failed writing NVIndex %s", idx)
 	}
@@ -249,7 +264,7 @@ func (t *tpm2Trust) CreateEAIndex(idx NVIndex, l uint16, value []byte, attrs tpm
 
 	pk, ok := t.pubkeys[pubkeyname]
 	if !ok {
-		pk, err = t.loadPubkey(pubkeyname)
+		pk, err = t.loadPubkey(pubkeyname, templates.KeyUsageDecrypt)
 		if err != nil {
 			return errors.Wrapf(err, "Error loading public key")
 		}
@@ -281,6 +296,17 @@ func (t *tpm2Trust) CreateEAIndex(idx NVIndex, l uint16, value []byte, attrs tpm
 	return nil
 }
 
+func (t *tpm2Trust) EnsurePCR7Data() error {
+	dataDir, keyClass, err := t.FindPCR7Data()
+	if err != nil {
+		return err
+	}
+	log.Infof("Signdata: keyclass %s datadir %s", keyClass, dataDir)
+	t.keyClass = keyClass
+	t.dataDir = dataDir
+	return nil
+}
+
 func (t *tpm2Trust) Provision(certPath, keyPath string) error {
 	// Store the provisioned cert and key
 	certBytes, err := os.ReadFile(certPath)
@@ -293,38 +319,20 @@ func (t *tpm2Trust) Provision(certPath, keyPath string) error {
 		return errors.Wrapf(err, "Failed reading provisioned key")
 	}
 
-	tcti, err := tlinux.OpenDevice("/dev/tpm0")
-	if err != nil {
-		log.Errorf("Error opening tpm device: %v", err)
-		os.Exit(1)
-	}
-	tpm := tpm2.NewTPMContext(tcti)
-	defer tpm.Close()
-	t.tpm = tpm
-
-	dataDir, keyClass, err := t.FindPCR7Data()
-	if err != nil {
-		return err
-	}
-	log.Infof("Signdata: keyclass %s datadir %s", keyClass, dataDir)
-	t.keyClass = keyClass
-	t.dataDir = dataDir
-
-
 	log.Infof("Taking ownership of TPM.")
 	type namedContext struct {
 		name      string
 		resource  tpm2.ResourceContext
 	}
 	contexts := []namedContext{
-		namedContext{name: "null", resource: tpm.NullHandleContext()},
-		namedContext{name: "platform", resource: tpm.PlatformHandleContext()},
-		namedContext{name: "lockout", resource: tpm.LockoutHandleContext()},
-		namedContext{name: "owner", resource: tpm.OwnerHandleContext()},
+		namedContext{name: "null", resource: t.tpm.NullHandleContext()},
+		namedContext{name: "platform", resource: t.tpm.PlatformHandleContext()},
+		namedContext{name: "lockout", resource: t.tpm.LockoutHandleContext()},
+		namedContext{name: "owner", resource: t.tpm.OwnerHandleContext()},
 	}
 	cleared := false
 	for _, c := range contexts {
-		err := tpm.Clear(c.resource, nil)
+		err := t.tpm.Clear(c.resource, nil)
 		if err == nil {
 			log.Infof("Cleared tpm using %s hierarchy", c.name)
 			cleared = true
@@ -366,12 +374,12 @@ func (t *tpm2Trust) Provision(certPath, keyPath string) error {
 
 	// Actually set the TPM admin password
 	setPassContexts := []namedContext{
-		namedContext{name: "owner", resource: tpm.OwnerHandleContext()},
-		namedContext{name: "endorsement", resource: tpm.EndorsementHandleContext()},
-		namedContext{name: "lockout", resource: tpm.LockoutHandleContext()},
+		namedContext{name: "owner", resource: t.tpm.OwnerHandleContext()},
+		namedContext{name: "endorsement", resource: t.tpm.EndorsementHandleContext()},
+		namedContext{name: "lockout", resource: t.tpm.LockoutHandleContext()},
 	}
 	for _, c := range setPassContexts {
-		err = tpm.HierarchyChangeAuth(c.resource, []byte(tpmPass), nil)
+		err = t.tpm.HierarchyChangeAuth(c.resource, []byte(tpmPass), nil)
 		if err != nil {
 			return errors.Wrapf(err, "Failed resetting password for %s", c.name)
 		}
@@ -428,55 +436,114 @@ func (t *tpm2Trust) PreInstall() error {
 
 // these are for debugging
 func (t *tpm2Trust) TpmLayoutVersion() (string, error) {
-	tcti, err := tlinux.OpenDevice("/dev/tpm0")
-	if err != nil {
-		log.Errorf("Error opening tpm device: %v", err)
-		os.Exit(1)
-	}
-	tpm := tpm2.NewTPMContext(tcti)
-	defer tpm.Close()
-	t.tpm = tpm
-
 	// Read the layout version
-	index, err := tpm.CreateResourceContextFromTPM(tpm2.Handle(TPM2IndexTPMVersion))
+	index, err := t.tpm.CreateResourceContextFromTPM(tpm2.Handle(TPM2IndexTPMVersion))
 	if err != nil {
 		log.Errorf("Error creating resource")
 		os.Exit(1)
 	}
-	data, err := tpm.NVRead(index, index, 8, 0, nil)
+	data, err := t.tpm.NVRead(index, index, 8, 0, nil)
 	return string(data), err
 }
 
 func (t *tpm2Trust) TpmEAVersion() (string, error) {
-	tcti, err := tlinux.OpenDevice("/dev/tpm0")
-	if err != nil {
-		log.Errorf("Error opening tpm device: %v", err)
-		os.Exit(1)
-	}
-	tpm := tpm2.NewTPMContext(tcti)
-	defer tpm.Close()
-	t.tpm = tpm
-
 	// Read the layout version
-	index, err := tpm.CreateResourceContextFromTPM(tpm2.Handle(TPM2IndexEAVersion))
+	index, err := t.tpm.CreateResourceContextFromTPM(tpm2.Handle(TPM2IndexEAVersion))
 	if err != nil {
 		log.Errorf("Error creating resource")
 		os.Exit(1)
 	}
-	data, err := tpm.NVRead(index, index, 4, 0, nil)
+	data, err := t.tpm.NVRead(index, index, 4, 0, nil)
+	return string(data), err
+}
+
+func (t *tpm2Trust) readSignature(nv NVIndex) ([]byte, error) {
+	filename := ""
+	switch nv {
+	case TPM2IndexAtxSecret, TPM2IndexSecret, TPM2IndexKey, TPM2IndexCert:
+		filename = "tpm_luks.policy.signed"
+	case TPM2IndexPassword: 
+		filename = "tpm_passwd.policy.signed"
+	}
+	if filename == "" {
+		return []byte{}, errors.Errorf("Invalid nvindex")
+	}
+	sPath := filepath.Join(t.dataDir, filename)
+	bytes, err := os.ReadFile(sPath)
+	if err != nil {
+		return []byte{}, errors.Wrapf(err, "Error reading signed policy file %s", sPath)
+	}
+	return bytes, nil
+}
+
+func (t *tpm2Trust) TpmEALuks() (string, error) {
+	// Read the layout version
+	index, err := t.tpm.CreateResourceContextFromTPM(tpm2.Handle(TPM2IndexAtxSecret))
+	if err != nil {
+		log.Errorf("Error creating TPM resource for NVIndex")
+		os.Exit(1)
+	}
+
+	nvp, _, err := t.tpm.NVReadPublic(index, nil)
+	if err != nil {
+		return "", errors.Wrapf(err, "Error getting size")
+	}
+
+	key, err := t.loadPubkey("luks", templates.KeyUsageSign)
+	if err != nil {
+		return "", errors.Wrapf(err, "Error loading luks policy signing key")
+	}
+
+	session, err := t.tpm.StartAuthSession(nil, nil, tpm2.SessionTypePolicy, nil, tpm2.HashAlgorithmSHA256)
+	if err != nil {
+		return "", errors.Wrapf(err, "Failed starting auth session")
+	}
+
+	err = t.tpm.PolicyPCR(session, nil,
+		tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7}}})
+	if err != nil {
+		return "", errors.Wrapf(err, "PolicyPCR failed")
+	}
+
+	vb := []byte(PolicyVersion.String())
+	nvV := tpm2.Operand(vb)
+
+	pvIndex, err := t.tpm.CreateResourceContextFromTPM(tpm2.Handle(TPM2IndexEAVersion))
+	if err != nil {
+		return "", errors.Wrapf(err, "Error creating TPM resource for NVIndex")
+	}
+	err = t.tpm.PolicyNV(pvIndex, pvIndex, session, nvV, uint16(0), tpm2.OpEq, nil)
+	if err != nil {
+		return "", errors.Wrapf(err, "PolicyNV failed")
+	}
+
+	digest, err := t.tpm.PolicyGetDigest(session)
+	if err != nil {
+		return "", errors.Wrapf(err, "Failed getting policy digest")
+	}
+
+	s, err := t.readSignature(TPM2IndexAtxSecret)
+	if err != nil {
+		return "", errors.Wrapf(err, "Failed reading policy signature")
+	}
+	signature := tpm2.Signature{
+		SigAlg:    tpm2.SigSchemeAlgRSASSA,
+		Signature: &tpm2.SignatureU{RSASSA: &tpm2.SignatureRSASSA{Hash: tpm2.HashAlgorithmSHA256, Sig: s}}}
+	ticket, err := t.tpm.VerifySignature(key, digest, &signature)
+	if err != nil {
+		return "", errors.Wrapf(err, "Failed verifying policy signature")
+	}
+
+	err = t.tpm.PolicyAuthorize(session, digest, nil, key.Name(), ticket)
+	if err != nil {
+		return "", err
+	}
+
+	data, err := t.tpm.NVRead(index, index, nvp.Size, 0, session)
 	return string(data), err
 }
 
 func (t *tpm2Trust) ExtendPCR7() error {
-	tcti, err := tlinux.OpenDevice("/dev/tpm0")
-	if err != nil {
-		log.Errorf("Error opening tpm device: %v", err)
-		os.Exit(1)
-	}
-	tpm := tpm2.NewTPMContext(tcti)
-	defer tpm.Close()
-	t.tpm = tpm
-
 	v, err := t.curPCR7()
 	log.Infof("Original pcr7 value: .%s. (error %v)", v, err)
 
@@ -484,7 +551,7 @@ func (t *tpm2Trust) ExtendPCR7() error {
 	hasher.Write([]byte("trust"))
 	hashE := tpm2.TaggedHash{HashAlg: tpm2.HashAlgorithmSHA256, Digest: hasher.Sum(nil)}
 	hashList := tpm2.TaggedHashList{hashE}
-	err = tpm.PCRExtend(tpm.PCRHandleContext(7), hashList, nil)
+	err = t.tpm.PCRExtend(t.tpm.PCRHandleContext(7), hashList, nil)
 	if err != nil {
 		return errors.Wrapf(err, "Failed extending pcr7")
 	}

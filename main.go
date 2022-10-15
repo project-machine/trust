@@ -25,15 +25,27 @@ func doTpmRead(ctx *cli.Context) error {
 	t := lib.NewTpm2()
 	v, err := t.TpmLayoutVersion()
 	if err != nil {
-		return err
+		fmt.Printf("Error reading TPM layout version: %v\n", err)
+	} else {
+		fmt.Printf("TPM layout version: %s.\n", v)
 	}
-	fmt.Printf("TPM layout version: %s.\n", v)
 
 	v, err = t.TpmEAVersion()
 	if err != nil {
-		return err
+		fmt.Printf("Error reading ea version: %v\n", err)
+		v = "1"
+	} else {
+		fmt.Printf("EA Policy version: %s.\n", v)
 	}
-	fmt.Printf("EA Policy version: %s.\n", v)
+
+	if v == "0001" {
+		v, err = t.TpmEALuks()
+		if err != nil {
+			fmt.Printf("reading luks keys failed with %v\n", err)
+		} else {
+			fmt.Printf("luks keys: .%s.\n", v)
+		}
+	}
 
 	return nil
 }
