@@ -67,19 +67,24 @@ func genPassphrase() (string, error) {
 	return ("trust-" + hex.EncodeToString(rand)), nil
 }
 
+type keyHandle struct {
+	path string
+	purpose templates.KeyUsage
+}
+
 type tpm2Trust struct {
 	// During provisioning
 	adminPwd string
 	keyClass string
 	dataDir  string
 	tpm      *tpm2.TPMContext
-	pubkeys  map[string]tpm2.ResourceContext
+	pubkeys  map[keyHandle]tpm2.ResourceContext
 
 }
 
 func NewTpm2() *tpm2Trust {
 	t := tpm2Trust{}
-	t.pubkeys = make(map[string]tpm2.ResourceContext)
+	t.pubkeys = make(map[keyHandle]tpm2.ResourceContext)
 	tcti, err := tlinux.OpenDevice("/dev/tpm0")
 	if err != nil {
 		log.Errorf("Error opening tpm device: %v", err)
@@ -96,6 +101,10 @@ func NewTpm2() *tpm2Trust {
 }
 
 func (t *tpm2Trust) Close() {
+	for kh, context := range t.pubkeys {
+		t.tpm.EvictControl(t.tpm.OwnerHandleContext(), context, context.Handle(), nil)
+		delete(t.pubkeys, kh)
+	}
 	t.tpm.Close()
 }
 
@@ -212,6 +221,10 @@ func (t *tpm2Trust)loadPubkey(poltype string, purpose templates.KeyUsage) (tpm2.
 	p := filepath.Dir(filepath.Dir(t.dataDir))
 	fname := fmt.Sprintf("%s-%s.pem", poltype, t.keyClass)
 	p = filepath.Join(p, "pubkeys", fname)
+	kh := keyHandle{path: p, purpose: purpose}
+	if v, ok := t.pubkeys[kh]; ok {
+		return v, nil
+	}
 	bytes, err := os.ReadFile(p)
 	if err != nil {
 		return nil, errors.Wrapf(err, "Error reading %s policy public key", poltype)
@@ -229,8 +242,12 @@ func (t *tpm2Trust)loadPubkey(poltype string, purpose templates.KeyUsage) (tpm2.
 			purpose,
 			nil,
 			pub.(*rsa.PublicKey))
-	return t.tpm.LoadExternal(nil, public, tpm2.HandleOwner)
-
+	v, err := t.tpm.LoadExternal(nil, public, tpm2.HandleOwner)
+	if err != nil {
+		return v, err
+	}
+	t.pubkeys[kh] = v
+	return v, nil
 }
 
 func (t *tpm2Trust) CreateIndex(idx NVIndex, len uint16, value []byte, attrs tpm2.NVAttributes) error {
@@ -262,13 +279,9 @@ func (t *tpm2Trust) CreateEAIndex(idx NVIndex, l uint16, value []byte, attrs tpm
 		pubkeyname = "tpmpass"
 	}
 
-	pk, ok := t.pubkeys[pubkeyname]
-	if !ok {
-		pk, err = t.loadPubkey(pubkeyname, templates.KeyUsageDecrypt)
-		if err != nil {
-			return errors.Wrapf(err, "Error loading public key")
-		}
-		t.pubkeys[pubkeyname] = pk
+	pk, err := t.loadPubkey(pubkeyname, templates.KeyUsageDecrypt)
+	if err != nil {
+		return errors.Wrapf(err, "Error loading public key")
 	}
 
 	tp := tutil.ComputeAuthPolicy(tpm2.HashAlgorithmSHA256)

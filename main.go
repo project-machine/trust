@@ -23,6 +23,7 @@ var tpmReadCmd = cli.Command{
 
 func doTpmRead(ctx *cli.Context) error {
 	t := lib.NewTpm2()
+	defer t.Close()
 	v, err := t.TpmLayoutVersion()
 	if err != nil {
 		fmt.Printf("Error reading TPM layout version: %v\n", err)
@@ -58,6 +59,7 @@ var extendPCR7Cmd = cli.Command{
 
 func doTpmExtend(ctx *cli.Context) error {
 	t := lib.NewTpm2()
+	defer t.Close()
 
 	return t.ExtendPCR7()
 }
@@ -79,6 +81,7 @@ func doProvision(ctx *cli.Context) error {
 
 
 	t := lib.NewTpm2()
+	defer t.Close()
 	args := ctx.Args()
 	return t.Provision(args[0], args[1])
 }
