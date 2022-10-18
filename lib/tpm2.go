@@ -82,9 +82,18 @@ type tpm2Trust struct {
 
 }
 
-func NewTpm2() *tpm2Trust {
+const (
+	RealTPM	= false
+	FakeTPM = true
+)
+
+func NewTpm2(fakeTPM bool) *tpm2Trust {
 	t := tpm2Trust{}
 	t.pubkeys = make(map[keyHandle]tpm2.ResourceContext)
+	if fakeTPM {
+		return &t
+	}
+
 	tcti, err := tlinux.OpenDevice("/dev/tpm0")
 	if err != nil {
 		log.Errorf("Error opening tpm device: %v", err)
@@ -105,7 +114,10 @@ func (t *tpm2Trust) Close() {
 		t.tpm.EvictControl(t.tpm.OwnerHandleContext(), context, context.Handle(), nil)
 		delete(t.pubkeys, kh)
 	}
-	t.tpm.Close()
+	if t.tpm != nil {
+		t.tpm.Close()
+		t.tpm = nil
+	}
 }
 
 type KeyType string
@@ -216,18 +228,21 @@ func (t *tpm2Trust) FindPCR7Data() (string, string, error) {
 }
 
 
-func (t *tpm2Trust)loadPubkey(poltype string, purpose templates.KeyUsage) (tpm2.ResourceContext, error) {
+func (t *tpm2Trust) pubkeyPath(poltype string) string {
 	// pubkeys are stored under grandparent of datadir
 	p := filepath.Dir(filepath.Dir(t.dataDir))
 	fname := fmt.Sprintf("%s-%s.pem", poltype, t.keyClass)
-	p = filepath.Join(p, "pubkeys", fname)
-	kh := keyHandle{path: p, purpose: purpose}
+	return filepath.Join(p, "pubkeys", fname)
+}
+
+func (t *tpm2Trust)loadPubkey(policyPath string, purpose templates.KeyUsage) (tpm2.ResourceContext, error) {
+	kh := keyHandle{path: policyPath, purpose: purpose}
 	if v, ok := t.pubkeys[kh]; ok {
 		return v, nil
 	}
-	bytes, err := os.ReadFile(p)
+	bytes, err := os.ReadFile(policyPath)
 	if err != nil {
-		return nil, errors.Wrapf(err, "Error reading %s policy public key", poltype)
+		return nil, errors.Wrapf(err, "Error reading policy public key")
 	}
 	block, _ := pem.Decode(bytes)
 	if block == nil {
@@ -279,7 +294,8 @@ func (t *tpm2Trust) CreateEAIndex(idx NVIndex, l uint16, value []byte, attrs tpm
 		pubkeyname = "tpmpass"
 	}
 
-	pk, err := t.loadPubkey(pubkeyname, templates.KeyUsageDecrypt)
+	pkPath := t.pubkeyPath(pubkeyname)
+	pk, err := t.loadPubkey(pkPath, templates.KeyUsageDecrypt)
 	if err != nil {
 		return errors.Wrapf(err, "Error loading public key")
 	}
@@ -502,7 +518,8 @@ func (t *tpm2Trust) TpmEALuks() (string, error) {
 		return "", errors.Wrapf(err, "Error getting size")
 	}
 
-	key, err := t.loadPubkey("luks", templates.KeyUsageSign)
+	keyPath := t.pubkeyPath("luks")
+	key, err := t.loadPubkey(keyPath, templates.KeyUsageSign)
 	if err != nil {
 		return "", errors.Wrapf(err, "Error loading luks policy signing key")
 	}
@@ -534,6 +551,12 @@ func (t *tpm2Trust) TpmEALuks() (string, error) {
 	digest, err := t.tpm.PolicyGetDigest(session)
 	if err != nil {
 		return "", errors.Wrapf(err, "Failed getting policy digest")
+	}
+
+	digest, err = tutil.ComputePolicyAuthorizeDigest(tpm2.HashAlgorithmSHA256,
+			digest, session.NonceTPM())
+	if err != nil {
+		return "", errors.Wrapf(err, "Failed computing transient digest")
 	}
 
 	s, err := t.readSignature(TPM2IndexAtxSecret)
