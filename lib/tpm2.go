@@ -511,6 +511,7 @@ func (t *tpm2Trust) TpmEALuks() (string, error) {
 	if err != nil {
 		return "", errors.Wrapf(err, "Failed starting auth session")
 	}
+	defer t.tpm.FlushContext(session)
 
 	err = t.tpm.PolicyPCR(session, nil,
 		tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7}}})
