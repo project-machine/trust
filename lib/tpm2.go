@@ -300,9 +300,21 @@ func (t *tpm2Trust) CreateEAIndex(idx NVIndex, l uint16, value []byte, attrs tpm
 		return errors.Wrapf(err, "Error loading public key")
 	}
 
-	tp := tutil.ComputeAuthPolicy(tpm2.HashAlgorithmSHA256)
-	tp.PolicyAuthorize([]byte(""), pk.Name())
-	d := tp.GetDigest()
+	session, err := t.tpm.StartAuthSession(nil, nil, tpm2.SessionTypeTrial, nil, tpm2.HashAlgorithmSHA256)
+	if err != nil  {
+		return err
+	}
+	defer t.tpm.FlushContext(session)
+
+	err = t.tpm.PolicyAuthorize(session, tpm2.Digest{}, tpm2.Nonce{}, pk.Name(), nil)
+	if err != nil {
+		return err
+	}
+
+	d, err := t.tpm.PolicyGetDigest(session)
+	if err != nil {
+		return err
+	}
 
 	nvpub := tpm2.NVPublic{
 		Index: tpm2.Handle(idx),
