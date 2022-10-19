@@ -553,12 +553,6 @@ func (t *tpm2Trust) TpmEALuks() (string, error) {
 		return "", errors.Wrapf(err, "Failed getting policy digest")
 	}
 
-	digest, err = tutil.ComputePolicyAuthorizeDigest(tpm2.HashAlgorithmSHA256,
-			digest, session.NonceTPM())
-	if err != nil {
-		return "", errors.Wrapf(err, "Failed computing transient digest")
-	}
-
 	s, err := t.readSignature(TPM2IndexAtxSecret)
 	if err != nil {
 		return "", errors.Wrapf(err, "Failed reading policy signature")
