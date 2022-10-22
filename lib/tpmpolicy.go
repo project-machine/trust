@@ -9,7 +9,7 @@ import (
 	tutil "github.com/canonical/go-tpm2/util"
 )
 
-func (t *tpm2Trust) genLuksPolicy(ctx *cli.Context) error {
+func genLuksPolicy(ctx *cli.Context) error {
 	pv := ctx.Int("policy-version")
 	if pv < 1 || pv > int(PolicyVersion) {
 		return fmt.Errorf("Bad policy version")
@@ -41,7 +41,7 @@ func (t *tpm2Trust) genLuksPolicy(ctx *cli.Context) error {
 	return os.WriteFile(ctx.String("luks-policy-file"), digest, 0600)
 }
 
-func (t *tpm2Trust) genPasswdPolicy(ctx *cli.Context) error {
+func genPasswdPolicy(ctx *cli.Context) error {
 	pol := tutil.ComputeAuthPolicy(tpm2.HashAlgorithmSHA256)
 
 	passwdPcr7, err := os.ReadFile(ctx.String("passwd-pcr7-file"))
@@ -55,11 +55,11 @@ func (t *tpm2Trust) genPasswdPolicy(ctx *cli.Context) error {
 	return os.WriteFile(ctx.String("passwd-policy-file"), digest, 0600)
 }
 
-func (t *tpm2Trust) TpmGenPolicy(ctx *cli.Context) error {
-	if err := t.genLuksPolicy(ctx); err != nil {
+func TpmGenPolicy(ctx *cli.Context) error {
+	if err := genLuksPolicy(ctx); err != nil {
 		return err
 	}
-	if err := t.genPasswdPolicy(ctx); err != nil {
+	if err := genPasswdPolicy(ctx); err != nil {
 		return err
 	}
 	return nil

@@ -22,19 +22,15 @@ var tpmReadCmd = cli.Command{
 }
 
 func doTpmRead(ctx *cli.Context) error {
-	t := lib.NewTpm2(lib.RealTPM)
-	defer t.Close()
-	v, err := t.TpmLayoutVersion()
+	t, err := lib.NewTpm2()
 	if err != nil {
-		fmt.Printf("Error reading TPM layout version: %v\n", err)
-	} else {
-		fmt.Printf("TPM layout version: %s.\n", v)
+		return err
 	}
-
-	v, err = t.TpmEAVersion()
+	defer t.Close()
+	v, err := t.TpmEAVersion()
 	if err != nil {
 		fmt.Printf("Error reading ea version: %v\n", err)
-		v = "1"
+		v = "0001"
 	} else {
 		fmt.Printf("EA Policy version: %s.\n", v)
 	}
@@ -95,7 +91,10 @@ var tpmPolicyGenCmd = cli.Command{
 }
 
 func doTpmPolicygen(ctx *cli.Context) error {
-	t := lib.NewTpm2(lib.FakeTPM)
+	t, err := lib.NewTpm2()
+	if err != nil {
+		return err
+	}
 	defer t.Close()
 	return t.TpmGenPolicy(ctx)
 }
@@ -107,7 +106,10 @@ var extendPCR7Cmd = cli.Command{
 }
 
 func doTpmExtend(ctx *cli.Context) error {
-	t := lib.NewTpm2(lib.RealTPM)
+	t, err := lib.NewTpm2()
+	if err != nil {
+		return err
+	}
 	defer t.Close()
 
 	return t.ExtendPCR7()
@@ -129,7 +131,10 @@ func doProvision(ctx *cli.Context) error {
 	}
 
 
-	t := lib.NewTpm2(lib.RealTPM)
+	t, err := lib.NewTpm2()
+	if err != nil {
+		return err
+	}
 	defer t.Close()
 	args := ctx.Args()
 	return t.Provision(args[0], args[1])
@@ -147,6 +152,19 @@ func main() {
 		tpmReadCmd,
 		tpmPolicyGenCmd,
 		extendPCR7Cmd,
+	}
+	app.Flags = []cli.Flag{
+		cli.BoolFlag{
+			Name:  "debug",
+			Usage: "display additional debug information",
+		},
+	}
+
+	app.Before = func(c *cli.Context) error {
+		if c.Bool("debug") {
+			log.SetLevel(log.DebugLevel)
+		}
+		return nil
 	}
 
 	if err := app.Run(os.Args); err != nil {
