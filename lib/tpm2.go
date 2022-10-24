@@ -2,7 +2,6 @@ package lib
 
 import (
 	"encoding/binary"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -33,14 +32,6 @@ func init() {
 	default:
 		panic("Could not determine native endianness.")
 	}
-}
-
-func genPassphrase() (string, error) {
-	rand, err := HWRNGRead(16)
-	if err != nil {
-		return "", err
-	}
-	return ("trust-" + hex.EncodeToString(rand)), nil
 }
 
 type tpm2V3Context struct {
@@ -409,12 +400,68 @@ func (c *tpm2V3Context) Tpm2Read(nvindex NVIndex, size int) (string, error) {
 	return string(stdout), nil
 }
 
-func (c *tpm2V3Context) Tpm2NVWrite(nvindex NVIndex, towrite string) error {
+func (c *tpm2V3Context) Tpm2NVWriteAsAdmin(nvindex NVIndex, towrite string) error {
 	cmd := []string{"tpm2_nvwrite", optHierarchyOwner, "--auth=" + c.adminPwd, optInputStdin, nvindex.String()}
 	stdout, stderr, rc := runCaptureStdin(towrite, cmd...)
 	if rc != 0 {
 		return fmt.Errorf("Failed running %s [%d]\nError: %s\nOutput: %s\n", cmd, rc, stderr, stdout)
 	}
+	return nil
+}
+
+func (c *tpm2V3Context) Tpm2NVWriteWithPolicy(nvindex NVIndex, towrite string) error {
+	signedPolicyPath := filepath.Join(c.dataDir, "tpm_luks.policy.signed")
+
+	pubkeyPath := c.Pubkeypath("luks")
+	err := c.Tpm2LoadExternal(pubkeyPath)
+	if err != nil {
+		return fmt.Errorf("Failed loading public key: %s: %w", pubkeyPath, err)
+	}
+
+	err = c.Tpm2StartSession(PolicySession)
+	if err != nil {
+		return fmt.Errorf("Failed creating auth session: %w", err)
+	}
+	defer c.Tpm2FlushContext()
+
+	err = c.Tpm2PolicyPCR(TPM_PCRS_DEF)
+	if err != nil {
+		return fmt.Errorf("Failed to create PCR Policy event with TPM: %w", err)
+	}
+
+	policyVersionSize := 4
+	policyVersion, err := Tpm2Read(TPM2IndexEAVersion, policyVersionSize)
+	if err != nil {
+		return fmt.Errorf("Failed to read PolicyVersion: %w", err)
+	}
+
+	policyDigest, err := c.Tpm2PolicyNV(policyVersion)
+	if err != nil {
+		return fmt.Errorf("The policy version specified does not match contents of TPM NV Index: %w", err)
+	}
+
+	ticket, err := c.Tpm2VerifySignature(c.pubkeyContext, policyDigest, signedPolicyPath)
+	if err != nil {
+		return fmt.Errorf("Failed to verify signature on EA Policy: %s: %w", signedPolicyPath, err)
+	}
+
+	// tpm2_policyauthorize
+	_, err = c.Tpm2PolicyAuthorizeTicket(policyDigest, ticket)
+	if err != nil {
+		return fmt.Errorf("Failed to Authorize the EA Policy, invalid signature on the policy digest: %w", err)
+	}
+
+	cmd := []string{
+		"tpm2_nvwrite",
+		fmt.Sprintf("--auth=session:%s", c.sessionFile),
+		optInputStdin,
+		nvindex.String(),
+	}
+	stdout, stderr, rc := runCaptureStdin(towrite, cmd...)
+	if rc != 0 {
+		return fmt.Errorf("Failed running %s [%d]\nError: %s\nOutput: %s\n", cmd, rc, stderr, stdout)
+	}
+
 	return nil
 }
 
@@ -454,7 +501,7 @@ func (c *tpm2V3Context) StorePublic(idx NVIndex, value string) error {
 		return err
 	}
 
-	return c.Tpm2NVWrite(idx, value)
+	return c.Tpm2NVWriteAsAdmin(idx, value)
 }
 
 type KeyType string
@@ -531,13 +578,13 @@ func (c *tpm2V3Context) Tpm2PolicyAuthorize() (string, error) {
 	return digestFile, run(cmd...)
 }
 
-func (c *tpm2V3Context) Tpm2PolicyAuthorizeTicket(sessionFile, policyDigest, ticketFile string) (string, error) {
-	log.Debugf("Tpm2PolicyAuthorizeTicket(session=%s policyDigest=%s ticketFile=%s)\n", sessionFile, policyDigest, ticketFile)
+func (c *tpm2V3Context) Tpm2PolicyAuthorizeTicket(policyDigest, ticketFile string) (string, error) {
+	log.Debugf("Tpm2PolicyAuthorizeTicket(session=%s policyDigest=%s ticketFile=%s)\n", c.sessionFile, policyDigest, ticketFile)
 	f := c.TempFile()
 	digestFile := f.Name()
 	f.Close()
 
-	cmd := []string{"tpm2_policyauthorize", "-S", sessionFile, "-i", policyDigest, "-n", c.pubkeyName, "-t", ticketFile}
+	cmd := []string{"tpm2_policyauthorize", "-S", c.sessionFile, "-i", policyDigest, "-n", c.pubkeyName, "-t", ticketFile}
 	return digestFile, run(cmd...)
 }
 
@@ -564,11 +611,11 @@ func (c *tpm2V3Context) Tpm2VerifySignature(pubkeyContextFile, digestFile, signa
 	return ticketFile, run(cmd...)
 }
 
-func (c *tpm2V3Context) Tpm2ReadSession(sessionFile string, nvindex NVIndex, offset int, size int) (string, error) {
-	log.Debugf("Tpm2ReadSession(session=%s nvindex=%s size=%d)\n", sessionFile, nvindex.String(), size)
+func (c *tpm2V3Context) Tpm2ReadSession(nvindex NVIndex, offset int, size int) (string, error) {
+	log.Debugf("Tpm2ReadSession(session=%s nvindex=%s size=%d)\n", c.sessionFile, nvindex.String(), size)
 	cmd := []string{
 		"tpm2_nvread",
-		fmt.Sprintf("--auth=session:%s", sessionFile),
+		fmt.Sprintf("--auth=session:%s", c.sessionFile),
 		fmt.Sprintf("--size=%d", size),
 		fmt.Sprintf("--offset=%d", offset),
 		nvindex.String(),
@@ -614,14 +661,14 @@ func (c *tpm2V3Context) ReadSecretPiece(idx NVIndex, signedPolicyPath string, of
 
 	// tpm2_policyauthorize
 	log.Debugf("tpm2V3Context.ReadSecretPiece() PolicyAuthorize\n")
-	_, err = c.Tpm2PolicyAuthorizeTicket(c.sessionFile, policyDigest, ticket)
+	_, err = c.Tpm2PolicyAuthorizeTicket(policyDigest, ticket)
 	if err != nil {
 		return "", fmt.Errorf("Failed to Authorize the EA Policy, invalid signature on the policy digest: %w", err)
 	}
 
 	// tpm2_nvread
 	log.Debugf("tpm2V3Context.ReadSecretPiece() ReadSession\n")
-	secret, err := c.Tpm2ReadSession(c.sessionFile, idx, offset, size)
+	secret, err := c.Tpm2ReadSession(idx, offset, size)
 	if err != nil {
 		return "", fmt.Errorf("Failed to read Secret from TPM: %w", err)
 	}
@@ -712,7 +759,7 @@ func (c *tpm2V3Context) StoreAdminPassword() error {
 	}
 	c.Tpm2FlushContext()
 
-	err = c.Tpm2NVWrite(TPM2IndexPassword, c.adminPwd)
+	err = c.Tpm2NVWriteAsAdmin(TPM2IndexPassword, c.adminPwd)
 	if err != nil {
 		return fmt.Errorf("Failed writing TPM passphrase to TPM: %w", err)
 	}
@@ -752,17 +799,14 @@ func (t *tpm2V3Context) Provision(certPath, keyPath string) error {
 		return fmt.Errorf("Unable to clear/take ownership of tpm: %w", err)
 	}
 
-	adminPwd, err := genPassphrase()
+	// Admin password on some hardware can't be longer than 32.
+	t.adminPwd, err = genPassphrase(32)
 	if err != nil {
 		return err
 	}
 
-	// Admin password on some hardware can't be longer than 32.
-	adminPwd = adminPwd[:31]
-	t.adminPwd = adminPwd
-
 	// TODO - save only if debug requested?
-	err = os.WriteFile("/run/tpm-passphrase", []byte(adminPwd), 0600)
+	err = os.WriteFile("/run/tpm-passphrase", []byte(t.adminPwd), 0600)
 	if err != nil {
 		log.Warnf("Unable to save admin passphrase in backup file")
 	}
@@ -784,12 +828,17 @@ func (t *tpm2V3Context) Provision(certPath, keyPath string) error {
 
 	// generate a luks passphrase for the CryptPart
 	log.Debugf("Generating LUKS passphrase")
-	luksPassphrase, err := genPassphrase()
+	sbsPassphrase, err := genPassphrase(40)
 	if err != nil {
 		return err
 	}
 
-	// TODO = partition and create the sbf with luksPassphrase
+	osPassphrase, err := genPassphrase(40)
+	if err != nil {
+		return err
+	}
+
+	// TODO = partition and create the sbf with sbsPassphrase
 
 	pubkeyPath := t.Pubkeypath("luks")
 	err = t.Tpm2LoadExternal(pubkeyPath)
@@ -811,7 +860,7 @@ func (t *tpm2V3Context) Provision(certPath, keyPath string) error {
 	attributes := "ownerwrite|ownerread|policyread"
 
 	log.Debugf("Defining and initializing LuksSecret index %s with attributes: %s", TPM2IndexSBSKey, attributes)
-	err = t.Tpm2NVDefine(policyDigestFile, attributes, TPM2IndexSBSKey, len(luksPassphrase))
+	err = t.Tpm2NVDefine(policyDigestFile, attributes, TPM2IndexSBSKey, len(sbsPassphrase))
 	if err != nil {
 		return fmt.Errorf("Failed defining SBS Secret NV: %w", err)
 	}
@@ -827,28 +876,28 @@ func (t *tpm2V3Context) Provision(certPath, keyPath string) error {
 	}
 
 	attributes = attributes + "|policywrite"
-	log.Debugf("Defining and initializing AtxSecret index %s with attributes: %s", TPM2IndexOSKey, attributes)
-	err = t.Tpm2NVDefine(policyDigestFile, attributes, TPM2IndexOSKey, len(AtxInitialPassphrase))
+	log.Debugf("Defining and initializing osPassphrase index %s with attributes: %s", TPM2IndexOSKey, attributes)
+	err = t.Tpm2NVDefine(policyDigestFile, attributes, TPM2IndexOSKey, len(osPassphrase))
 	if err != nil {
 		return fmt.Errorf("Failed defining AtxSecret NV: %w", err)
 	}
 
-	err = t.Tpm2NVWrite(TPM2IndexCert, string(certBytes))
+	err = t.Tpm2NVWriteAsAdmin(TPM2IndexCert, string(certBytes))
 	if err != nil {
 		return fmt.Errorf("Failed writing provisioned cert to TPM: %w", err)
 	}
 
-	err = t.Tpm2NVWrite(TPM2IndexKey, string(keyBytes))
+	err = t.Tpm2NVWriteAsAdmin(TPM2IndexKey, string(keyBytes))
 	if err != nil {
 		return fmt.Errorf("Failed writing provisioned key to TPM: %w", err)
 	}
 
-	err = t.Tpm2NVWrite(TPM2IndexSBSKey, luksPassphrase)
+	err = t.Tpm2NVWriteAsAdmin(TPM2IndexSBSKey, sbsPassphrase)
 	if err != nil {
 		return fmt.Errorf("Failed writing SBS luks passphrase to TPM: %w", err)
 	}
 
-	err = t.Tpm2NVWrite(TPM2IndexOSKey, AtxInitialPassphrase)
+	err = t.Tpm2NVWriteAsAdmin(TPM2IndexOSKey, osPassphrase)
 	if err != nil {
 		return fmt.Errorf("Failed writing initial atx passphrase to TPM: %w", err)
 	}
@@ -895,7 +944,7 @@ func (t *tpm2V3Context) InitrdSetup() error {
 	log.Infof("Copied certs")
 
 	// Load the OS key into the keyring
-	atxKey, err := t.ReadSecret(TPM2IndexOSKey, signedPolicyPath)
+	osPassphrase, err := t.ReadSecret(TPM2IndexOSKey, signedPolicyPath)
 	if err != nil {
 		return fmt.Errorf("Failed reading key from TPM: %w", err)
 	}
@@ -909,7 +958,7 @@ func (t *tpm2V3Context) InitrdSetup() error {
 	if err != nil {
 		return fmt.Errorf("Getting session keyring failed: %w", err)
 	}
-	key, err := session.Add("machine:luks", []byte(atxKey))
+	key, err := session.Add("machine:luks", []byte(osPassphrase))
 	if err != nil {
 		return fmt.Errorf("Adding key to keyring failed: %w", err)
 	}
@@ -948,6 +997,55 @@ func (t *tpm2V3Context) InitrdSetup() error {
 	return nil
 }
 
+// After Provisioning, but before an OS install.  Create a new OS password.
+// Put that password in the TPM and in root keyring, then extend PCR7.  Now
+// the OS installer can create encrypted filesystems, but cannot read any
+// data from a previous install.
 func (t *tpm2V3Context) PreInstall() error {
-	return fmt.Errorf("Not yet implemented")
+	defer func() {
+		if err := t.ExtendPCR7(); err != nil {
+			log.Warnf("Failed extending PCR 7: %v", err)
+			run("poweroff")
+			log.Fatalf("Failed powering off")
+		}
+		log.Infof("Extended PCR 7")
+	}()
+
+	osPassphrase, err := genPassphrase(40)
+	if err != nil {
+		return err
+	}
+
+	err = t.Tpm2NVWriteWithPolicy(TPM2IndexOSKey, osPassphrase)
+	if err != nil {
+		return fmt.Errorf("Failed writing initial atx passphrase to TPM: %w", err)
+	}
+
+	// see https://mjg59.dreamwidth.org/37333.html
+	keyring, err := keyctl.UserKeyring()
+	if err != nil {
+		return fmt.Errorf("Getting usersession keyring failed: %w", err)
+	}
+	session, err := keyctl.SessionKeyring()
+	if err != nil {
+		return fmt.Errorf("Getting session keyring failed: %w", err)
+	}
+	key, err := session.Add("machine:luks", []byte(osPassphrase))
+	if err != nil {
+		return fmt.Errorf("Adding key to keyring failed: %w", err)
+	}
+
+	if err := keyctl.SetPerm(key, keyctl.PermUserAll|keyctl.PermProcessAll); err != nil {
+		return fmt.Errorf("Key permissions setting failed: %w", err)
+	}
+	if err := keyctl.Link(keyring, key); err != nil {
+		return fmt.Errorf("Key link failed: %w", err)
+	}
+	if err := keyctl.Unlink(session, key); err != nil {
+		return fmt.Errorf("Key unlink failed: %w", err)
+	}
+
+	// TODO - do we need to also copy the manifestCA.pem out of initrd?
+
+	return nil
 }

@@ -1,6 +1,7 @@
 package lib
 
 import (
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
@@ -71,4 +72,19 @@ func MountTmpfs(dest, size string) error {
 		return fmt.Errorf("Failed mounting tmpfs onto %s: %w", dest, err)
 	}
 	return nil
+}
+
+func genPassphrase(nchars int) (string, error) {
+	// each random byte will give us two characters.  We prefix with
+	// trust-.  So if we want 39 or 40 characters, request (39-6)/2+1 = 17
+	// bytes, giving us 136 bits of randomness.
+
+	nbytes := (nchars - 6) / 2 + 1
+	rand, err := HWRNGRead(nbytes)
+	if err != nil {
+		return "", err
+	}
+	s := "trust-" + hex.EncodeToString(rand)
+	s = s[:nchars]
+	return s, nil
 }

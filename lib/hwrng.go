@@ -1,13 +1,13 @@
 package lib
 
 import (
+	"fmt"
 	"io/ioutil"
 	"os"
 	"strconv"
 	"strings"
 
 	"github.com/apex/log"
-	"github.com/pkg/errors"
 )
 
 func HWRNGPoolSize() (int, error) {
@@ -46,7 +46,7 @@ func HWRNGSeed() error {
 	if l, err := wf.Write(rndBytes); err != nil {
 		return err
 	} else if l != size {
-		return errors.Errorf("Tried to write %d bytes random, but wrote %d", size, l)
+		return fmt.Errorf("Tried to write %d bytes random, but wrote %d", size, l)
 	}
 
 	return nil
@@ -55,17 +55,17 @@ func HWRNGSeed() error {
 func HWRNGRead(size int) ([]byte, error) {
 	rf, err := os.Open("/dev/hwrng")
 	if err != nil {
-		return []byte{}, errors.Wrapf(err, "Failed opening hwrng")
+		return []byte{}, fmt.Errorf("Failed opening hwrng: %w", err)
 	}
 	defer rf.Close()
 	buf := make([]byte, size)
 	num, err := rf.Read(buf)
 	if err != nil {
-		return []byte{}, errors.Wrapf(err, "Failed reading random bytes")
+		return []byte{}, fmt.Errorf("Failed reading random bytes: %w", err)
 	}
 
 	if num != size {
-		return []byte(buf), errors.Errorf("Read only %d bytes, wanted %d", num, size)
+		return []byte(buf), fmt.Errorf("Read only %d bytes, wanted %d: %w", num, size, err)
 	}
 
 	return []byte(buf), nil

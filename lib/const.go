@@ -14,7 +14,6 @@ func (i NVIndex) String() string {
 	return fmt.Sprintf("0x%08x", int(i))
 }
 
-const AtxInitialPassphrase = "atx-000000000000000000000000000000000000"
 const PolicyVersion EAPolicyVersion = 1
 const TpmLayoutVersion int = 3
 const (

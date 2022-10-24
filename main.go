@@ -107,6 +107,26 @@ func doProvision(ctx *cli.Context) error {
 	return t.Provision(args[0], args[1])
 }
 
+var preInstallCmd = cli.Command{
+	Name: "preinstall",
+	Usage: "Create and commit new OS key before install",
+	Action: doPreInstall,
+}
+
+func doPreInstall(ctx *cli.Context) error {
+	if !PathExists("/dev/tpm0") {
+		return fmt.Errorf("No TPM.  No other subsystems have been implemented")
+	}
+
+	t, err := lib.NewTpm2()
+	if err != nil {
+		return err
+	}
+	defer t.Close()
+
+	return t.PreInstall()
+}
+
 var initrdSetupCmd = cli.Command{
 	Name: "initrd-setup",
 	Usage: "Setup a provisioned system for boot",
@@ -136,6 +156,7 @@ func main() {
 	app.Version = Version
 	app.Commands = []cli.Command{
 		initrdSetupCmd,
+		preInstallCmd,
 		provisionCmd,
 		tpmPolicyGenCmd,
 		extendPCR7Cmd,
