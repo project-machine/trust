@@ -11,9 +11,11 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"unsafe"
 
 	"github.com/apex/log"
+	"github.com/jsipprell/keyctl"
 	"github.com/urfave/cli"
 )
 
@@ -185,6 +187,58 @@ func NewTpm2() (*tpm2V3Context, error) {
 		keyClass:       keyClass,
 	}
 	return t, nil
+}
+
+// Set up the /priv/factor/secure mounts+dirs
+// Return the final directory name.
+func setupFactory() (string, error) {
+	// can't move-mount out of a MS_SHARED parent, which / is,
+	// so create a MS_SLAVE parent directory.
+	priv := "/priv"
+	err := EnsureDir(priv)
+	if err != nil {
+		return "", fmt.Errorf("failed creating directory %s: %w", priv, err)
+	}
+	err = syscall.Mount(priv, priv, "", syscall.MS_BIND, "")
+	if err != nil {
+		return "", fmt.Errorf("failed to make /priv a bind mount: %w", err)
+	}
+	err = syscall.Mount("none", priv, "", syscall.MS_SLAVE, "")
+	if err != nil {
+		return "", fmt.Errorf("failed to make /priv not shared: %w", err)
+	}
+
+	tmpfsDir := filepath.Join(priv, "factory")
+	if err = os.Chmod(tmpfsDir, 0644); err != nil {
+		return "", fmt.Errorf("Failed making tmpfs private: %w", err)
+	}
+
+	dest := filepath.Join(tmpfsDir, "secure")
+
+	if err = MountTmpfs(tmpfsDir, "1G"); err != nil {
+		return "", fmt.Errorf("Failed creating tmpfs for certs: %w", err)
+	}
+	if err = os.Chmod(tmpfsDir, 0644); err != nil {
+		return "", fmt.Errorf("Failed making tmpfs private: %w", err)
+	}
+
+	if PathExists(PBFMountpoint) {
+		privpbf := filepath.Join(priv, PBFMountpoint)
+		err = EnsureDir(privpbf)
+		if err != nil {
+			log.Warnf("Failed creating %s", privpbf)
+		}
+		err = syscall.Mount(PBFMountpoint, privpbf, "", syscall.MS_BIND, "")
+		if err != nil {
+			log.Warnf("Failed bind mounting %s to %s: %v", PBFMountpoint, privpbf, err)
+		}
+	}
+
+	err = os.Mkdir(dest, 0700)
+	if err !=  nil {
+		return dest, fmt.Errorf("Could not create %s on tmpfs: %w", dest, err)
+	}
+	return dest, nil
 }
 
 func (t *tpm2V3Context) Close() {
@@ -666,10 +720,31 @@ func (c *tpm2V3Context) StoreAdminPassword() error {
 	return nil
 }
 
+// echo atomix | sha256sum
+const atxSha = "b7135cbb321a66fa848b07288bd008b89bd5b7496c4569c5e1a4efd5f7c8e0a7"
+
+func (t *tpm2V3Context) ExtendPCR7() error {
+	cmd := []string{"tpm2_pcrextend", "7:sha256=" + atxSha}
+	return run(cmd...)
+}
+
+func (t *tpm2V3Context) TpmGenPolicy(ctx *cli.Context) error {
+	return TpmGenPolicy(ctx)
+}
+
 func (t *tpm2V3Context) Provision(certPath, keyPath string) error {
 	err := HWRNGSeed()
 	if err != nil {
 		return fmt.Errorf("Failed to seed hardware random: %v", err)
+	}
+
+	certBytes, err := os.ReadFile(certPath)
+	if err != nil {
+		return fmt.Errorf("Failed reading provisioned cert %s: %w", certPath, err)
+	}
+	keyBytes, err := os.ReadFile(keyPath)
+	if err != nil {
+		return fmt.Errorf("Failed reading provisioned key %s: %w", keyPath, err)
 	}
 
 	log.Infof("Taking ownership of TPM.")
@@ -735,25 +810,45 @@ func (t *tpm2V3Context) Provision(certPath, keyPath string) error {
 
 	attributes := "ownerwrite|ownerread|policyread"
 
-	log.Debugf("Defining and initializing LuksSecret index %s with attributes: %s", TPM2IndexSecret, attributes)
-	err = t.Tpm2NVDefine(policyDigestFile, attributes, TPM2IndexSecret, len(luksPassphrase))
+	log.Debugf("Defining and initializing LuksSecret index %s with attributes: %s", TPM2IndexSBSKey, attributes)
+	err = t.Tpm2NVDefine(policyDigestFile, attributes, TPM2IndexSBSKey, len(luksPassphrase))
 	if err != nil {
 		return fmt.Errorf("Failed defining SBS Secret NV: %w", err)
 	}
 
+	log.Debugf("Defining the provisioned key and certificate NVIndexes")
+	err = t.Tpm2NVDefine(policyDigestFile, attributes, TPM2IndexCert, len(certBytes))
+	if err != nil {
+		return fmt.Errorf("Failed defining NVIndex for provisioned key")
+	}
+	err = t.Tpm2NVDefine(policyDigestFile, attributes, TPM2IndexKey, len(keyBytes))
+	if err != nil {
+		return fmt.Errorf("Failed defining NVIndex for provisioned cert")
+	}
+
 	attributes = attributes + "|policywrite"
-	log.Debugf("Defining and initializing AtxSecret index %s with attributes: %s", TPM2IndexAtxSecret, attributes)
-	err = t.Tpm2NVDefine(policyDigestFile, attributes, TPM2IndexAtxSecret, len(AtxInitialPassphrase))
+	log.Debugf("Defining and initializing AtxSecret index %s with attributes: %s", TPM2IndexOSKey, attributes)
+	err = t.Tpm2NVDefine(policyDigestFile, attributes, TPM2IndexOSKey, len(AtxInitialPassphrase))
 	if err != nil {
 		return fmt.Errorf("Failed defining AtxSecret NV: %w", err)
 	}
 
-	err = t.Tpm2NVWrite(TPM2IndexSecret, luksPassphrase)
+	err = t.Tpm2NVWrite(TPM2IndexCert, string(certBytes))
+	if err != nil {
+		return fmt.Errorf("Failed writing provisioned cert to TPM: %w", err)
+	}
+
+	err = t.Tpm2NVWrite(TPM2IndexKey, string(keyBytes))
+	if err != nil {
+		return fmt.Errorf("Failed writing provisioned key to TPM: %w", err)
+	}
+
+	err = t.Tpm2NVWrite(TPM2IndexSBSKey, luksPassphrase)
 	if err != nil {
 		return fmt.Errorf("Failed writing SBS luks passphrase to TPM: %w", err)
 	}
 
-	err = t.Tpm2NVWrite(TPM2IndexAtxSecret, AtxInitialPassphrase)
+	err = t.Tpm2NVWrite(TPM2IndexOSKey, AtxInitialPassphrase)
 	if err != nil {
 		return fmt.Errorf("Failed writing initial atx passphrase to TPM: %w", err)
 	}
@@ -761,38 +856,98 @@ func (t *tpm2V3Context) Provision(certPath, keyPath string) error {
 	return nil
 }
 
+// Called during signed initrd to extract information from TPM
+// and make it available for (signed) userspace.
 func (t *tpm2V3Context) InitrdSetup() error {
-	return fmt.Errorf("Not yet implemented")
+	defer func() {
+		if err := t.ExtendPCR7(); err != nil {
+			log.Warnf("Failed extending PCR 7: %v", err)
+			run("poweroff")
+			log.Fatalf("Failed powering off")
+		}
+		log.Infof("Extended PCR 7")
+	}()
+
+	dest, err := setupFactory()
+	if err != nil {
+		return err
+	}
+
+	signedPolicyPath := filepath.Join(t.dataDir, "tpm_luks.policy.signed")
+
+	provCert, err := t.ReadSecret(TPM2IndexCert, signedPolicyPath)
+	if err != nil {
+		return fmt.Errorf("Failed reading provisioned certificate: %w", err)
+	}
+	err = ioutil.WriteFile(filepath.Join(dest, "server.crt"), []byte(provCert), 0600)
+	if err != nil {
+		return fmt.Errorf("Failed writing provisioned certificate to tmpfs: %w", err)
+	}
+
+	privKey, err := t.ReadSecret(TPM2IndexKey, signedPolicyPath)
+	if err != nil {
+		return fmt.Errorf("Failed reading provisioned key from TPM: %w", err)
+	}
+	err = ioutil.WriteFile(filepath.Join(dest, "server.key"), []byte(privKey), 0600)
+	if err != nil {
+		return fmt.Errorf("Failed writing provisioned key to tmpfs: %w", err)
+	}
+	log.Infof("Copied certs")
+
+	// Load the OS key into the keyring
+	atxKey, err := t.ReadSecret(TPM2IndexOSKey, signedPolicyPath)
+	if err != nil {
+		return fmt.Errorf("Failed reading key from TPM: %w", err)
+	}
+
+	// see https://mjg59.dreamwidth.org/37333.html
+	keyring, err := keyctl.UserKeyring()
+	if err != nil {
+		return fmt.Errorf("Getting usersession keyring failed: %w", err)
+	}
+	session, err := keyctl.SessionKeyring()
+	if err != nil {
+		return fmt.Errorf("Getting session keyring failed: %w", err)
+	}
+	key, err := session.Add("machine:luks", []byte(atxKey))
+	if err != nil {
+		return fmt.Errorf("Adding key to keyring failed: %w", err)
+	}
+
+	if err := keyctl.SetPerm(key, keyctl.PermUserAll|keyctl.PermProcessAll); err != nil {
+		return fmt.Errorf("Key permissions setting failed: %w", err)
+	}
+	if err := keyctl.Link(keyring, key); err != nil {
+		return fmt.Errorf("Key link failed: %w", err)
+	}
+	if err := keyctl.Unlink(session, key); err != nil {
+		return fmt.Errorf("Key unlink failed: %w", err)
+	}
+
+	err = CopyFile("/manifestCA.pem", filepath.Join(dest, "manifestCA.pem"))
+	if err != nil {
+		return fmt.Errorf("Failed copying the manifest CA parent: %w", err)
+	}
+
+	// But we also need to access this file during initrd, while
+	// it's still under /priv.  We could handle this several ways,
+	// but let's just copy it to /factory/secure/ as well.
+	err = EnsureDir("/factory/secure")
+	if err != nil {
+		return fmt.Errorf("Failed creating /factory/secure in initrd: %w", err)
+	}
+	err = CopyFile("/priv/factory/secure/server.crt", "/factory/secure/server.crt")
+	if err != nil {
+		return fmt.Errorf("Failed copying the server certificate: %w", err)
+	}
+	err = CopyFile("/manifestCA.pem", "/factory/secure/manifestCA.pem")
+	if err != nil {
+		log.Warnf("Failed copying manifest CA parent: %w", err)
+	}
+
+	return nil
 }
 
 func (t *tpm2V3Context) PreInstall() error {
 	return fmt.Errorf("Not yet implemented")
-}
-
-// just for debugging - print out ea policy version
-func (t *tpm2V3Context) TpmEAVersion() (string, error) {
-	sz, err := Tpm2NVIndexLength(TPM2IndexEAVersion)
-	if err != nil {
-		return "", fmt.Errorf("Error reading length of %s: %w", TPM2IndexEAVersion, err)
-	}
-	return Tpm2Read(TPM2IndexEAVersion, sz)
-}
-
-// just for debugging - print out the luks passphrase
-func (t *tpm2V3Context) TpmEALuks() (string, error) {
-	signedPolicyPath := filepath.Join(t.dataDir, "tpm_luks.policy.signed")
-
-	return t.ReadSecret(TPM2IndexAtxSecret, signedPolicyPath)
-}
-
-// echo atomix | sha256sum
-const atxSha = "b7135cbb321a66fa848b07288bd008b89bd5b7496c4569c5e1a4efd5f7c8e0a7"
-
-func (t *tpm2V3Context) ExtendPCR7() error {
-	cmd := []string{"tpm2_pcrextend", "7:sha256=" + atxSha}
-	return run(cmd...)
-}
-
-func (t *tpm2V3Context) TpmGenPolicy(ctx *cli.Context) error {
-	return TpmGenPolicy(ctx)
 }

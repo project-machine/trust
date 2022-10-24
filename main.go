@@ -11,41 +11,8 @@ import (
 
 // commands:
 //   provision - dangerous
-//   tpmread - for internal testing, not useful in install
-//      "cert", "key", "atx", "sbskey"
-//   initrd - read data from tpm, extend pcr7
+//   boot - read data from tpm, extend pcr7
 //   intrd-setup - create new luks key, extend pcr7
-var tpmReadCmd = cli.Command{
-	Name: "tpm-read",
-	Usage: "Debug tpm state",
-	Action: doTpmRead,
-}
-
-func doTpmRead(ctx *cli.Context) error {
-	t, err := lib.NewTpm2()
-	if err != nil {
-		return err
-	}
-	defer t.Close()
-	v, err := t.TpmEAVersion()
-	if err != nil {
-		fmt.Printf("Error reading ea version: %v\n", err)
-		v = "0001"
-	} else {
-		fmt.Printf("EA Policy version: %s.\n", v)
-	}
-
-	if v == "0001" {
-		v, err = t.TpmEALuks()
-		if err != nil {
-			fmt.Printf("reading luks keys failed with %v\n", err)
-		} else {
-			fmt.Printf("luks keys: .%s.\n", v)
-		}
-	}
-
-	return nil
-}
 
 var tpmPolicyGenCmd = cli.Command{
 	Name: "tpm-policy-gen",
@@ -140,6 +107,26 @@ func doProvision(ctx *cli.Context) error {
 	return t.Provision(args[0], args[1])
 }
 
+var initrdSetupCmd = cli.Command{
+	Name: "initrd-setup",
+	Usage: "Setup a provisioned system for boot",
+	Action: doInitrdSetup,
+}
+
+func doInitrdSetup(ctx *cli.Context) error {
+	if !PathExists("/dev/tpm0") {
+		return fmt.Errorf("No TPM.  No other subsystems have been implemented")
+	}
+
+
+	t, err := lib.NewTpm2()
+	if err != nil {
+		return err
+	}
+	defer t.Close()
+	return t.InitrdSetup()
+}
+
 const Version = "0.01"
 
 func main() {
@@ -148,8 +135,8 @@ func main() {
 	app.Usage = "Manage the trustroot"
 	app.Version = Version
 	app.Commands = []cli.Command{
+		initrdSetupCmd,
 		provisionCmd,
-		tpmReadCmd,
 		tpmPolicyGenCmd,
 		extendPCR7Cmd,
 	}

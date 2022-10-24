@@ -23,7 +23,7 @@ func genLuksPolicy(ctx *cli.Context) error {
 	}
 	pol.PolicyPCR(luksPcr7, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7}}})
 
-	nvV := tpm2.Operand(EAPolicyVersion(TPM2IndexAtxSecret).String())
+	nvV := tpm2.Operand(EAPolicyVersion(TPM2IndexOSKey).String())
 	eaVIndex := &tpm2.NVPublic{
 		Index:   tpm2.Handle(TPM2IndexEAVersion),
 		NameAlg: tpm2.HashAlgorithmSHA256,
