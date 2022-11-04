@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 )
 
 func PathExists(d string) bool {
@@ -10,4 +11,13 @@ func PathExists(d string) bool {
 		return false
 	}
 	return true
+}
+
+func getTrustPath() (string, error) {
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		return "", err
+	}
+	path := filepath.Join(configDir, "machine", "trust")
+        return path, os.MkdirAll(path, 0755)
 }

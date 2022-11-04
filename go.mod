@@ -6,7 +6,10 @@ require (
 	github.com/urfave/cli v1.22.5
 )
 
-require github.com/pkg/errors v0.8.1 // indirect
+require (
+	github.com/google/uuid v1.3.0 // indirect
+	github.com/pkg/errors v0.8.1 // indirect
+)
 
 require (
 	github.com/canonical/go-sp800.108-kdf v0.0.0-20210314145419-a3359f2d21b9 // indirect

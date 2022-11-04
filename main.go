@@ -3,16 +3,24 @@ package main
 import (
 	"fmt"
 	"os"
+	"crypto/rsa"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
+	"path/filepath"
 
 	"github.com/apex/log"
 	"github.com/urfave/cli"
 	"github.com/project-machine/trust/lib"
+	"github.com/google/uuid"
 )
 
 // commands:
 //   provision - dangerous
 //   boot - read data from tpm, extend pcr7
 //   intrd-setup - create new luks key, extend pcr7
+
 
 var tpmPolicyGenCmd = cli.Command{
 	Name: "tpm-policy-gen",
@@ -147,6 +155,92 @@ func doInitrdSetup(ctx *cli.Context) error {
 	return t.InitrdSetup()
 }
 
+func generateKeyPair(newUUID string) error {
+	privKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return err
+	}
+
+	err = privKey.Validate()
+	if err != nil {
+		return err
+	}
+
+	CN := fmt.Sprintf("manifest PRODUCT:%s", newUUID)
+	template := x509.CertificateRequest {
+		Subject: pkix.Name {
+			CommonName: CN,
+		},
+	}
+
+	// Create a CSR with the new key
+	newCSR, err := x509.CreateCertificateRequest(rand.Reader, &template, privKey)
+	if err != nil {
+		return err
+	}
+
+	keyPEM := pem.EncodeToMemory (
+		&pem.Block {
+			Type: "RSA PRIVATE KEY",
+			Bytes: x509.MarshalPKCS1PrivateKey(privKey),
+		},
+	)
+
+	csrPEM := pem.EncodeToMemory (
+		&pem.Block {
+			Type: "CERTIFICATE REQUEST",
+			Bytes: newCSR,
+		},
+	)
+
+	//  get trust dir
+	trustDir, err := getTrustPath()
+        if err != nil {
+		return err
+        }
+
+        defer func() {
+                if err != nil {
+                        os.Remove(filepath.Join(trustDir,"manifest.key"))
+                        os.Remove(filepath.Join(trustDir,"manifest.csr"))
+                        os.Remove(filepath.Join(trustDir,"uuid"))
+                }
+        }()
+
+	// Save private key to trust dir
+	err = os.WriteFile(filepath.Join(trustDir, "manifest.key"), keyPEM, 0600)
+	if err != nil {
+		return err
+	}
+
+	// Save CSR to trust dir
+
+	err = os.WriteFile(filepath.Join(trustDir, "manifest.csr"), csrPEM, 0640)
+	if err != nil {
+		return err
+	}
+
+	// Save uuid to trust dir
+	err = os.WriteFile(filepath.Join(trustDir, "uuid"), []byte(newUUID), 0640)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("New uuid, RSA keypair, and CSR saved in %s directory\n", trustDir)
+	return nil
+}
+
+var newUUIDCmd = cli.Command{
+	Name: "new-uuid",
+	Usage: "Generate a uuid and keypair",
+	Action: doNewUUID,
+}
+
+func doNewUUID(ctx *cli.Context) error {
+	newUUID := uuid.NewString()
+	return  generateKeyPair(newUUID)
+}
+
 const Version = "0.01"
 
 func main() {
@@ -160,6 +254,7 @@ func main() {
 		provisionCmd,
 		tpmPolicyGenCmd,
 		extendPCR7Cmd,
+		newUUIDCmd,
 	}
 	app.Flags = []cli.Flag{
 		cli.BoolFlag{
