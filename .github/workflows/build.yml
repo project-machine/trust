@@ -17,4 +17,4 @@ jobs:
           sudo apt-get update
           sudo apt-get install golang make openssl swtpm tpm2-tools qemu-kvm
       - run: |
-        make
+          make
