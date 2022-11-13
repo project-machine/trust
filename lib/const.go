@@ -44,6 +44,8 @@ const SBFMapperName = "secureBootFlash"
 const PBFPartitionName = "pbf"
 const PBFMountpoint = "/factory/pbf"
 
+const SignDataDir = "/pcr7data"
+
 // PBFPartitionTypeID - 01A3E19F-9FEA-ED47-92C2-E75639FF5601
 var PBFPartitionTypeID = [16]byte{
 	0x9f, 0xe1, 0xa3, 0x01, 0xea, 0x9f, 0x47, 0xed, 0x92, 0xc2, 0xe7, 0x56, 0x39, 0xff, 0x56, 0x01}
@@ -51,3 +53,5 @@ var PBFPartitionTypeID = [16]byte{
 // SBFPartitionTypeID is 01A3E19F-9FEA-ED47-92C2-E75639FF5602
 var SBFPartitionTypeID = [16]byte{
 	0x9f, 0xe1, 0xa3, 0x01, 0xea, 0x9f, 0x47, 0xed, 0x92, 0xc2, 0xe7, 0x56, 0x39, 0xff, 0x56, 0x02}
+
+const MiB, GiB = uint64(1024 * 1024), uint64(1024 * 1024 * 1024)

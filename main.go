@@ -66,12 +66,7 @@ var tpmPolicyGenCmd = cli.Command{
 }
 
 func doTpmPolicygen(ctx *cli.Context) error {
-	t, err := lib.NewTpm2()
-	if err != nil {
-		return err
-	}
-	defer t.Close()
-	return t.TpmGenPolicy(ctx)
+	return lib.TpmGenPolicy(ctx)
 }
 
 var extendPCR7Cmd = cli.Command{
@@ -93,12 +88,25 @@ func doTpmExtend(ctx *cli.Context) error {
 var provisionCmd = cli.Command{
 	Name: "provision",
 	Usage: "Provision a new system",
+	Flags: []cli.Flag{
+		cli.StringFlag{
+			Name: "disk",
+			Usage: "Disk to provision.  \"any\" to choose one.  Disk must be empty or be wiped.",
+		},
+		cli.BoolFlag{
+			Name: "wipe",
+			Usage: "Wipe the chosen disk.",
+		},
+	},
 	Action: doProvision,
 }
 
 func doProvision(ctx *cli.Context) error {
 	if ctx.NArg() != 2 {
 		return fmt.Errorf("Required arguments: certificate and key paths")
+	}
+	if ctx.String("disk") == "" {
+		log.Warnf("No disk specified. No disk will be provisioned")
 	}
 
 	if !PathExists("/dev/tpm0") {
@@ -111,8 +119,7 @@ func doProvision(ctx *cli.Context) error {
 		return err
 	}
 	defer t.Close()
-	args := ctx.Args()
-	return t.Provision(args[0], args[1])
+	return t.Provision(ctx)
 }
 
 var preInstallCmd = cli.Command{
