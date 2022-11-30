@@ -3,17 +3,22 @@ package main
 import (
 	"fmt"
 	"os"
+	"errors"
+	"time"
 	"crypto/rsa"
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"crypto/sha1"
 	"encoding/pem"
 	"path/filepath"
+	"math/big"
 
 	"github.com/apex/log"
 	"github.com/urfave/cli"
 	"github.com/project-machine/trust/lib"
 	"github.com/google/uuid"
+	"github.com/go-git/go-git/v5"
 )
 
 // commands:
@@ -162,26 +167,14 @@ func doInitrdSetup(ctx *cli.Context) error {
 	return t.InitrdSetup()
 }
 
-func generateKeyPair(newUUID string) error {
+func generateManifestCreds(newUUID string) error {
+	// Generate a keypair
 	privKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		return err
 	}
 
 	err = privKey.Validate()
-	if err != nil {
-		return err
-	}
-
-	CN := fmt.Sprintf("manifest PRODUCT:%s", newUUID)
-	template := x509.CertificateRequest {
-		Subject: pkix.Name {
-			CommonName: CN,
-		},
-	}
-
-	// Create a CSR with the new key
-	newCSR, err := x509.CreateCertificateRequest(rand.Reader, &template, privKey)
 	if err != nil {
 		return err
 	}
@@ -193,26 +186,88 @@ func generateKeyPair(newUUID string) error {
 		},
 	)
 
-	csrPEM := pem.EncodeToMemory (
-		&pem.Block {
-			Type: "CERTIFICATE REQUEST",
-			Bytes: newCSR,
-		},
-	)
-
-	//  get trust dir
-	trustDir, err := getTrustPath()
-        if err != nil {
+	// Get the keys repo
+	dir, err := os.MkdirTemp("", "keys")
+	if err != nil {
 		return err
-        }
+	}
+	defer os.RemoveAll(dir)  // clean up later
+	_, err = git.PlainClone(dir, false, &git.CloneOptions{URL: "https://github.com/project-machine/keys.git",})
+	if err != nil {
+		return err
+	}
 
-        defer func() {
-                if err != nil {
-                        os.Remove(filepath.Join(trustDir,"manifest.key"))
-                        os.Remove(filepath.Join(trustDir,"manifest.csr"))
-                        os.Remove(filepath.Join(trustDir,"uuid"))
-                }
-        }()
+	// Get the rootCA cert & privKey
+	certFile, err := os.ReadFile(filepath.Join(dir, "manifestCA/cert.pem"))
+	if err != nil {
+		return err
+	}
+	pemBlock, _ := pem.Decode(certFile)
+	if pemBlock == nil {
+		return errors.New("pem.Decode cert failed")
+	}
+	CAcert, err := x509.ParseCertificate(pemBlock.Bytes)
+	if err != nil {
+		return err
+	}
+
+	keyFile, err := os.ReadFile(filepath.Join(dir, "manifestCA/privkey.pem"))
+	if err != nil {
+		return err
+	}
+	pemBlock, _ = pem.Decode(keyFile)
+	if pemBlock == nil {
+		return errors.New("pem.Decode cert failed")
+	}
+	CAkey, err := x509.ParsePKCS8PrivateKey(pemBlock.Bytes)
+	if err != nil {
+		return err
+	}
+
+	// Collect info for certificate template
+	CN := fmt.Sprintf("manifest PRODUCT:%s", newUUID)
+	serialNo, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	if err != nil {
+		return err
+	}
+	// SubjectKeyID is sha1 hash of the public key
+	pubKey := privKey.PublicKey
+	publicKeyBytes, err := x509.MarshalPKIXPublicKey(&pubKey)
+	if err != nil {
+		return err
+	}
+	subjectKeyId := sha1.Sum(publicKeyBytes)
+
+	certTemplate := x509.Certificate {
+		SerialNumber:	serialNo,
+		Subject:		pkix.Name {
+							CommonName: CN,
+						},
+		NotBefore:		time.Now(),
+		NotAfter:		time.Now().AddDate(20,0,0),
+		SubjectKeyId:	subjectKeyId[:],
+		KeyUsage:		x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:	[]x509.ExtKeyUsage{x509.ExtKeyUsageCodeSigning},
+	}
+
+	signedCert, err := x509.CreateCertificate(rand.Reader, &certTemplate, CAcert, &pubKey, CAkey)
+	if err != nil {
+		return err
+	}
+
+	// Save the new key and signed certificate
+	trustDir, err := getTrustPath()
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		if err != nil {
+			os.Remove(filepath.Join(trustDir,"manifest.key"))
+			os.Remove(filepath.Join(trustDir,"manifest.crt"))
+			os.Remove(filepath.Join(trustDir,"uuid"))
+		}
+	}()
 
 	// Save private key to trust dir
 	err = os.WriteFile(filepath.Join(trustDir, "manifest.key"), keyPEM, 0600)
@@ -220,9 +275,13 @@ func generateKeyPair(newUUID string) error {
 		return err
 	}
 
-	// Save CSR to trust dir
-
-	err = os.WriteFile(filepath.Join(trustDir, "manifest.csr"), csrPEM, 0640)
+	// Save signed certificate to trust dir
+	certPEM, err := os.Create(filepath.Join(trustDir, "manifest.crt"))
+	if err != nil {
+		return err
+	}
+	pem.Encode(certPEM, &pem.Block {Type: "CERTIFICATE", Bytes: signedCert})
+	err = certPEM.Close()
 	if err != nil {
 		return err
 	}
@@ -233,7 +292,7 @@ func generateKeyPair(newUUID string) error {
 		return err
 	}
 
-	fmt.Printf("New uuid, RSA keypair, and CSR saved in %s directory\n", trustDir)
+	fmt.Printf("uuid, manifest.key, and manifest.cert saved in %s directory\n", trustDir)
 	return nil
 }
 
@@ -244,8 +303,18 @@ var newUUIDCmd = cli.Command{
 }
 
 func doNewUUID(ctx *cli.Context) error {
+	// Check if manifest credentials exist
+	trustDir, err := getTrustPath()
+	if err != nil {
+		return err
+	}
+	if PathExists(filepath.Join(trustDir, "uuid")) {
+		return fmt.Errorf("Manifest credentials (uuid) already exist.")
+	}
+
+	// Create new manifest credentials
 	newUUID := uuid.NewString()
-	return  generateKeyPair(newUUID)
+	return  generateManifestCreds(newUUID)
 }
 
 const Version = "0.01"
