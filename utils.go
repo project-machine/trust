@@ -19,5 +19,5 @@ func getTrustPath() (string, error) {
 		return "", err
 	}
 	path := filepath.Join(configDir, "machine", "trust")
-        return path, os.MkdirAll(path, 0755)
+	return path, os.MkdirAll(path, 0755)
 }
