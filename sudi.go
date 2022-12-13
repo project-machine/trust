@@ -156,7 +156,10 @@ func doSudiCert(VMname string) error {
 	if err != nil {
 		return err
 	}
-	pem.Encode(certPEM, &pem.Block {Type: "CERTIFICATE", Bytes: serverCert})
+	err = pem.Encode(certPEM, &pem.Block {Type: "CERTIFICATE", Bytes: serverCert})
+	if err != nil {
+		return err
+	}
 	err = certPEM.Close()
 	if err != nil {
 		return err
@@ -174,7 +177,10 @@ func doSudiCert(VMname string) error {
 	if err != nil {
 		return err
 	}
-	pem.Encode(keyPEM, &pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8})
+	err = pem.Encode(keyPEM, &pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8})
+	if err != nil {
+		return err
+	}
 	err = keyPEM.Close()
 	if err != nil {
 		return err
