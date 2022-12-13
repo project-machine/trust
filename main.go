@@ -18,7 +18,6 @@ import (
 	"github.com/urfave/cli"
 	"github.com/project-machine/trust/lib"
 	"github.com/google/uuid"
-	"github.com/go-git/go-git/v5"
 )
 
 // commands:
@@ -187,15 +186,11 @@ func generateManifestCreds(newUUID string) error {
 	)
 
 	// Get the keys repo
-	dir, err := os.MkdirTemp("", "keys")
+	dir, err := getKeysrepo()
 	if err != nil {
 		return err
 	}
 	defer os.RemoveAll(dir)  // clean up later
-	_, err = git.PlainClone(dir, false, &git.CloneOptions{URL: "https://github.com/project-machine/keys.git",})
-	if err != nil {
-		return err
-	}
 
 	// Get the rootCA cert & privKey
 	certFile, err := os.ReadFile(filepath.Join(dir, "manifestCA/cert.pem"))
