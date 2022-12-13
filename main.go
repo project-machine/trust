@@ -178,13 +178,6 @@ func generateManifestCreds(newUUID string) error {
 		return err
 	}
 
-	keyPEM := pem.EncodeToMemory (
-		&pem.Block {
-			Type: "RSA PRIVATE KEY",
-			Bytes: x509.MarshalPKCS1PrivateKey(privKey),
-		},
-	)
-
 	// Get the keys repo
 	dir, err := getKeysrepo()
 	if err != nil {
@@ -265,7 +258,20 @@ func generateManifestCreds(newUUID string) error {
 	}()
 
 	// Save private key to trust dir
-	err = os.WriteFile(filepath.Join(trustDir, "manifest.key"), keyPEM, 0600)
+	keyPEM, err := os.Create(filepath.Join(trustDir, "manifest.key"))
+	if err != nil {
+		return err
+	}
+	pkcs8, err := x509.MarshalPKCS8PrivateKey(privKey)
+	if err != nil {
+		return err
+	}
+	pem.Encode(keyPEM, &pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8})
+	err = keyPEM.Close()
+	if err != nil {
+		return err
+	}
+	err = os.Chmod(filepath.Join(trustDir, "manifest.key"), 0600)
 	if err != nil {
 		return err
 	}
@@ -280,6 +286,10 @@ func generateManifestCreds(newUUID string) error {
 	if err != nil {
 		return err
 	}
+	err = os.Chmod(filepath.Join(trustDir, "manifest.crt"), 0640)
+	if err != nil {
+		return err
+	}
 
 	// Save uuid to trust dir
 	err = os.WriteFile(filepath.Join(trustDir, "uuid"), []byte(newUUID), 0640)
@@ -287,7 +297,7 @@ func generateManifestCreds(newUUID string) error {
 		return err
 	}
 
-	fmt.Printf("uuid, manifest.key, and manifest.cert saved in %s directory\n", trustDir)
+	fmt.Printf("uuid, manifest.key, and manifest.crt saved in %s directory\n", trustDir)
 	return nil
 }
 
