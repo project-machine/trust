@@ -61,3 +61,12 @@ func getKeysrepo() (string, error) {
 	}
 	return dir, nil
 }
+
+// Get the location where keysets are stored
+func getMosKeyPath() (string, error) {
+	dataDir, err := UserDataDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dataDir, "machine", "trust", "keys"), nil
+}
