@@ -18,6 +18,8 @@ import (
 	"github.com/urfave/cli"
 	"github.com/project-machine/trust/lib"
 	"github.com/google/uuid"
+	"github.com/go-git/go-git/v5"
+
 )
 
 // commands:
@@ -328,6 +330,59 @@ func doNewUUID(ctx *cli.Context) error {
 	return  generateManifestCreds(newUUID)
 }
 
+var initKeysetCmd = cli.Command{
+	Name: "initkeyset",
+	Usage: "Generate keyset for MOS",
+	Flags: []cli.Flag{
+		cli.StringFlag{
+			Name: "keysetname",
+			Usage: "Name of the keyset to use for mos.",
+		},
+		cli.StringSliceFlag{
+			Name: "Org",
+			Usage: "X509-Organization field to add to certificates when generating a new keysey. (optional)",
+		},
+	},
+	Action: doInitKeyset,
+}
+
+func doInitKeyset(ctx *cli.Context) error {
+	keysetName := ctx.String("keysetname")
+	Org := ctx.StringSlice("Org")
+
+	if keysetName == "" {
+		return errors.New("Please specify keysetname")
+	}
+
+	if Org == nil {
+		log.Warnf("X509-Organization field not specified for new certificates.")
+	}
+
+	// See if keyset exists
+	mosKeyPath, err := getMosKeyPath()
+	if err != nil {
+		return err
+	}
+	keysetPath := filepath.Join(mosKeyPath,  keysetName)
+	if PathExists(keysetPath) {
+		return  fmt.Errorf("%s keyset already exists.\n", keysetName)
+	}
+
+	// git clone if keyset is snakeoil
+	if keysetName == "snakeoil" {
+		_, err = git.PlainClone(keysetPath, false, &git.CloneOptions{URL: "https://github.com/project-machine/keys.git"})
+		if err != nil {
+			os.Remove(keysetPath)
+			return err
+		} else {
+			return nil
+		}
+	} else {
+		// Otherwise, generate a new keyset
+		return initkeyset(keysetName, Org)
+	}
+}
+
 const Version = "0.01"
 
 func main() {
@@ -342,6 +397,7 @@ func main() {
 		tpmPolicyGenCmd,
 		extendPCR7Cmd,
 		newUUIDCmd,
+		initKeysetCmd,
 	}
 	app.Flags = []cli.Flag{
 		cli.BoolFlag{
