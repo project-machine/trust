@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 )
 
+// PathExists checks for existense of specified path
 func PathExists(d string) bool {
 	_, err := os.Stat(d)
 	if err != nil && os.IsNotExist(err) {
@@ -31,6 +32,7 @@ func getSudiDir() (string, error) {
 	return sudiPath, os.MkdirAll(sudiPath, 0755)
 }
 
+// UserDataDir returns the user's data directory
 func UserDataDir() (string, error) {
 	p, err := os.UserHomeDir()
 	if err != nil {
@@ -39,6 +41,7 @@ func UserDataDir() (string, error) {
 	return filepath.Join(p, ".local", "share"), nil
 }
 
+// ConfPath returns the user's config directory
 func ConfPath(cluster string) string {
 	configDir, err := os.UserConfigDir()
 	if err != nil {
