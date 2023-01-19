@@ -269,7 +269,11 @@ func initkeyset(keysetName string, Org []string) error {
 		return err
 	}
 
-	// TODO: Generate sample uuid, manifest key and cert
+	// Generate sample uuid, manifest key and cert
+	err = generateNewUUIDCreds(keysetName, filepath.Join(keysetPath, "manifest"))
+	if err != nil {
+		return err
+	}
 
 	// TODO: Generate new manifest cert
 
