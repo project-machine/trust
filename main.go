@@ -1,16 +1,15 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
-	"errors"
 	"path/filepath"
 
 	"github.com/apex/log"
-	"github.com/urfave/cli"
-	"github.com/project-machine/trust/lib"
 	"github.com/go-git/go-git/v5"
-
+	"github.com/project-machine/trust/lib"
+	"github.com/urfave/cli"
 )
 
 // commands:
@@ -18,44 +17,43 @@ import (
 //   boot - read data from tpm, extend pcr7
 //   intrd-setup - create new luks key, extend pcr7
 
-
 var tpmPolicyGenCmd = cli.Command{
-	Name: "tpm-policy-gen",
-	Usage: "Generate tpm policy",
+	Name:   "tpm-policy-gen",
+	Usage:  "Generate tpm policy",
 	Action: doTpmPolicygen,
 	Flags: []cli.Flag{
 		cli.StringFlag{
-			Name: "pf,passwd-policy-file",
+			Name:  "pf,passwd-policy-file",
 			Usage: "File to which to write password policy",
 			Value: "passwd_policy.out",
 		},
 		cli.StringFlag{
-			Name: "lf,luks-policy-file",
+			Name:  "lf,luks-policy-file",
 			Usage: "File to which to write luks policy",
 			Value: "luks_policy.out",
 		},
 		cli.StringFlag{
-			Name: "pp,passwd-pcr7-file",
+			Name:  "pp,passwd-pcr7-file",
 			Usage: "File from which to read password pcr7",
 			Value: "passwd_pcr7.bin",
 		},
 		cli.StringFlag{
-			Name: "lp,luks-pcr7-file",
+			Name:  "lp,luks-pcr7-file",
 			Usage: "File from which to read luks pcr7",
 			Value: "luks_pcr7.bin",
 		},
 		cli.IntFlag{
-			Name: "pv,policy-version",
+			Name:  "pv,policy-version",
 			Usage: "Policy version",
 			Value: 1,
 		},
 		cli.StringFlag{
-			Name: "pk,passwd-pubkey-file",
+			Name:  "pk,passwd-pubkey-file",
 			Usage: "File from which to read password policy pubkey",
 			Value: "passwd_pubkey.pem",
 		},
 		cli.StringFlag{
-			Name: "lk,luks-pubkey-file",
+			Name:  "lk,luks-pubkey-file",
 			Usage: "File from which read write luks policy pubkey",
 			Value: "luks_pubkey.pem",
 		},
@@ -67,8 +65,8 @@ func doTpmPolicygen(ctx *cli.Context) error {
 }
 
 var extendPCR7Cmd = cli.Command{
-	Name: "extend-pcr7",
-	Usage: "Extend TPM PCR7",
+	Name:   "extend-pcr7",
+	Usage:  "Extend TPM PCR7",
 	Action: doTpmExtend,
 }
 
@@ -83,15 +81,15 @@ func doTpmExtend(ctx *cli.Context) error {
 }
 
 var provisionCmd = cli.Command{
-	Name: "provision",
+	Name:  "provision",
 	Usage: "Provision a new system",
 	Flags: []cli.Flag{
 		cli.StringFlag{
-			Name: "disk",
+			Name:  "disk",
 			Usage: "Disk to provision.  \"any\" to choose one.  Disk must be empty or be wiped.",
 		},
 		cli.BoolFlag{
-			Name: "wipe",
+			Name:  "wipe",
 			Usage: "Wipe the chosen disk.",
 		},
 	},
@@ -110,7 +108,6 @@ func doProvision(ctx *cli.Context) error {
 		return fmt.Errorf("No TPM.  No other subsystems have been implemented")
 	}
 
-
 	t, err := lib.NewTpm2()
 	if err != nil {
 		return err
@@ -120,8 +117,8 @@ func doProvision(ctx *cli.Context) error {
 }
 
 var preInstallCmd = cli.Command{
-	Name: "preinstall",
-	Usage: "Create and commit new OS key before install",
+	Name:   "preinstall",
+	Usage:  "Create and commit new OS key before install",
 	Action: doPreInstall,
 }
 
@@ -140,8 +137,8 @@ func doPreInstall(ctx *cli.Context) error {
 }
 
 var initrdSetupCmd = cli.Command{
-	Name: "initrd-setup",
-	Usage: "Setup a provisioned system for boot",
+	Name:   "initrd-setup",
+	Usage:  "Setup a provisioned system for boot",
 	Action: doInitrdSetup,
 }
 
@@ -149,7 +146,6 @@ func doInitrdSetup(ctx *cli.Context) error {
 	if !PathExists("/dev/tpm0") {
 		return fmt.Errorf("No TPM.  No other subsystems have been implemented")
 	}
-
 
 	t, err := lib.NewTpm2()
 	if err != nil {
@@ -160,11 +156,11 @@ func doInitrdSetup(ctx *cli.Context) error {
 }
 
 var newUUIDCmd = cli.Command{
-	Name: "new-uuid",
+	Name:  "new-uuid",
 	Usage: "Generate a uuid and keypair",
 	Flags: []cli.Flag{
 		cli.StringFlag{
-			Name: "keysetname",
+			Name:  "keysetname",
 			Usage: "Pathname of local keys repository. (optional)",
 		},
 	},
@@ -183,7 +179,7 @@ func doNewUUID(ctx *cli.Context) error {
 	}
 
 	destdir := filepath.Join(trustDir, "manifest")
-	if ! PathExists(destdir) {
+	if !PathExists(destdir) {
 		err = os.Mkdir(destdir, 0755)
 		if err != nil {
 			return err
@@ -191,7 +187,7 @@ func doNewUUID(ctx *cli.Context) error {
 	} else {
 		// Check if manifest credentials exist
 		if PathExists(filepath.Join(destdir, "uuid")) {
-			return errors.New("Manifest credentials (uuid) already exist.")
+			return errors.New("manifest credentials (uuid) already exist")
 		}
 	}
 
@@ -199,22 +195,21 @@ func doNewUUID(ctx *cli.Context) error {
 	err = generateNewUUIDCreds(keysetName, destdir)
 	if err != nil {
 		return err
-	} else {
-		fmt.Printf("New credentials saved in %s directory\n", destdir)
 	}
+	fmt.Printf("New credentials saved in %s directory\n", destdir)
 	return nil
 }
 
 var initKeysetCmd = cli.Command{
-	Name: "initkeyset",
+	Name:  "initkeyset",
 	Usage: "Generate keyset for MOS",
 	Flags: []cli.Flag{
 		cli.StringFlag{
-			Name: "keysetname",
+			Name:  "keysetname",
 			Usage: "Name of the keyset to use for mos.",
 		},
 		cli.StringSliceFlag{
-			Name: "Org",
+			Name:  "Org",
 			Usage: "X509-Organization field to add to certificates when generating a new keysey. (optional)",
 		},
 	},
@@ -240,7 +235,7 @@ func doInitKeyset(ctx *cli.Context) error {
 	}
 	keysetPath := filepath.Join(mosKeyPath, keysetName)
 	if PathExists(keysetPath) {
-		return  fmt.Errorf("%s keyset already exists.\n", keysetName)
+		return fmt.Errorf("%s keyset already exists", keysetName)
 	}
 
 	// git clone if keyset is snakeoil
@@ -249,15 +244,14 @@ func doInitKeyset(ctx *cli.Context) error {
 		if err != nil {
 			os.Remove(keysetPath)
 			return err
-		} else {
-			return nil
 		}
-	} else {
-		// Otherwise, generate a new keyset
-		return initkeyset(keysetName, Org)
+		return nil
 	}
+	// Otherwise, generate a new keyset
+	return initkeyset(keysetName, Org)
 }
 
+// Version of trust
 const Version = "0.01"
 
 func main() {
