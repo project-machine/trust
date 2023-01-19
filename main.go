@@ -180,7 +180,7 @@ func doNewUUID(ctx *cli.Context) error {
 
 	destdir := filepath.Join(trustDir, "manifest")
 	if !PathExists(destdir) {
-		err = os.Mkdir(destdir, 0755)
+		err = os.Mkdir(destdir, 0750)
 		if err != nil {
 			return err
 		}

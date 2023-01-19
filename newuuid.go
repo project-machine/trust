@@ -70,15 +70,12 @@ func SignCert(template, CAcert *x509.Certificate, CAkey any, destdir string) err
 	if err != nil {
 		return err
 	}
+	defer keyPEM.Close()
 	pkcs8, err := x509.MarshalPKCS8PrivateKey(privKey)
 	if err != nil {
 		return err
 	}
 	err = pem.Encode(keyPEM, &pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8})
-	if err != nil {
-		return err
-	}
-	err = keyPEM.Close()
 	if err != nil {
 		return err
 	}
@@ -92,11 +89,8 @@ func SignCert(template, CAcert *x509.Certificate, CAkey any, destdir string) err
 	if err != nil {
 		return err
 	}
+	defer certPEM.Close()
 	err = pem.Encode(certPEM, &pem.Block{Type: "CERTIFICATE", Bytes: signedCert})
-	if err != nil {
-		return err
-	}
-	err = certPEM.Close()
 	if err != nil {
 		return err
 	}
