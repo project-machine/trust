@@ -39,19 +39,24 @@ func generaterootCA(destdir string, caTemplate *x509.Certificate) error {
 		return err
 	}
 	// Save the private key and cert to the specified directory
+	defer func() {
+		if err != nil {
+			os.Remove(filepath.Join(destdir, "privkey.pem"))
+			os.Remove(filepath.Join(destdir, "cert.pem"))
+		}
+	}()
+
 	keyPEM, err := os.Create(filepath.Join(destdir, "privkey.pem"))
 	if err != nil {
 		return err
 	}
+	defer keyPEM.Close()
+
 	pkcs8, err := x509.MarshalPKCS8PrivateKey(privkey)
 	if err != nil {
 		return err
 	}
 	err = pem.Encode(keyPEM, &pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8})
-	if err != nil {
-		return err
-	}
-	err = keyPEM.Close()
 	if err != nil {
 		return err
 	}
@@ -65,11 +70,9 @@ func generaterootCA(destdir string, caTemplate *x509.Certificate) error {
 	if err != nil {
 		return err
 	}
+	defer certPEM.Close()
+
 	err = pem.Encode(certPEM, &pem.Block{Type: "CERTIFICATE", Bytes: rootCA})
-	if err != nil {
-		return err
-	}
-	err = certPEM.Close()
 	if err != nil {
 		return err
 	}
@@ -111,20 +114,25 @@ func generateCreds(destdir string, doguid bool, template *x509.Certificate) erro
 	if err != nil {
 		return err
 	}
+
 	// Save the private key and cert to the specified directory
+	defer func() {
+		if err != nil {
+			os.Remove(filepath.Join(destdir, "privkey.pem"))
+			os.Remove(filepath.Join(destdir, "cert.pem"))
+		}
+	}()
 	keyPEM, err := os.Create(filepath.Join(destdir, "privkey.pem"))
 	if err != nil {
 		return err
 	}
+	defer keyPEM.Close()
+
 	pkcs8, err := x509.MarshalPKCS8PrivateKey(privkey)
 	if err != nil {
 		return err
 	}
 	err = pem.Encode(keyPEM, &pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8})
-	if err != nil {
-		return err
-	}
-	err = keyPEM.Close()
 	if err != nil {
 		return err
 	}
@@ -138,11 +146,8 @@ func generateCreds(destdir string, doguid bool, template *x509.Certificate) erro
 	if err != nil {
 		return err
 	}
+	defer certPEM.Close()
 	err = pem.Encode(certPEM, &pem.Block{Type: "CERTIFICATE", Bytes: newcert})
-	if err != nil {
-		return err
-	}
-	err = certPEM.Close()
 	if err != nil {
 		return err
 	}
@@ -218,7 +223,7 @@ func initkeyset(keysetName string, Org []string) error {
 		return fmt.Errorf("%s keyset already exists", keysetName)
 	}
 
-	os.MkdirAll(keysetPath, 0755)
+	os.MkdirAll(keysetPath, 0750)
 
 	// Start generating the new keys
 	defer func() {
