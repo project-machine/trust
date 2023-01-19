@@ -4,20 +4,11 @@ import (
 	"fmt"
 	"os"
 	"errors"
-	"time"
-	"crypto/rsa"
-	"crypto/rand"
-	"crypto/x509"
-	"crypto/x509/pkix"
-	"crypto/sha1"
-	"encoding/pem"
 	"path/filepath"
-	"math/big"
 
 	"github.com/apex/log"
 	"github.com/urfave/cli"
 	"github.com/project-machine/trust/lib"
-	"github.com/google/uuid"
 	"github.com/go-git/go-git/v5"
 
 )
@@ -168,166 +159,50 @@ func doInitrdSetup(ctx *cli.Context) error {
 	return t.InitrdSetup()
 }
 
-func generateManifestCreds(newUUID string) error {
-	// Generate a keypair
-	privKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		return err
-	}
-
-	err = privKey.Validate()
-	if err != nil {
-		return err
-	}
-
-	// Get the keys repo
-	dir, err := getKeysrepo()
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(dir)  // clean up later
-
-	// Get the rootCA cert & privKey
-	certFile, err := os.ReadFile(filepath.Join(dir, "manifestCA/cert.pem"))
-	if err != nil {
-		return err
-	}
-	pemBlock, _ := pem.Decode(certFile)
-	if pemBlock == nil {
-		return errors.New("pem.Decode cert failed")
-	}
-	CAcert, err := x509.ParseCertificate(pemBlock.Bytes)
-	if err != nil {
-		return err
-	}
-
-	keyFile, err := os.ReadFile(filepath.Join(dir, "manifestCA/privkey.pem"))
-	if err != nil {
-		return err
-	}
-	pemBlock, _ = pem.Decode(keyFile)
-	if pemBlock == nil {
-		return errors.New("pem.Decode cert failed")
-	}
-	CAkey, err := x509.ParsePKCS8PrivateKey(pemBlock.Bytes)
-	if err != nil {
-		return err
-	}
-
-	// Collect info for certificate template
-	CN := fmt.Sprintf("manifest PRODUCT:%s", newUUID)
-	serialNo, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
-	if err != nil {
-		return err
-	}
-	// SubjectKeyID is sha1 hash of the public key
-	pubKey := privKey.PublicKey
-	publicKeyBytes, err := x509.MarshalPKIXPublicKey(&pubKey)
-	if err != nil {
-		return err
-	}
-	subjectKeyId := sha1.Sum(publicKeyBytes)
-
-	certTemplate := x509.Certificate {
-		SerialNumber:	serialNo,
-		Subject:		pkix.Name {
-							CommonName: CN,
-						},
-		NotBefore:		time.Now(),
-		NotAfter:		time.Now().AddDate(20,0,0),
-		SubjectKeyId:	subjectKeyId[:],
-		KeyUsage:		x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:	[]x509.ExtKeyUsage{x509.ExtKeyUsageCodeSigning},
-	}
-
-	signedCert, err := x509.CreateCertificate(rand.Reader, &certTemplate, CAcert, &pubKey, CAkey)
-	if err != nil {
-		return err
-	}
-
-	// Save the new key and signed certificate
-	trustDir, err := getTrustPath()
-	if err != nil {
-		return err
-	}
-
-	defer func() {
-		if err != nil {
-			os.Remove(filepath.Join(trustDir,"manifest.key"))
-			os.Remove(filepath.Join(trustDir,"manifest.crt"))
-			os.Remove(filepath.Join(trustDir,"uuid"))
-		}
-	}()
-
-	// Save private key to trust dir
-	keyPEM, err := os.Create(filepath.Join(trustDir, "manifest.key"))
-	if err != nil {
-		return err
-	}
-	pkcs8, err := x509.MarshalPKCS8PrivateKey(privKey)
-	if err != nil {
-		return err
-	}
-	err = pem.Encode(keyPEM, &pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8})
-	if err != nil {
-		return err
-	}
-	err = keyPEM.Close()
-	if err != nil {
-		return err
-	}
-	err = os.Chmod(filepath.Join(trustDir, "manifest.key"), 0600)
-	if err != nil {
-		return err
-	}
-
-	// Save signed certificate to trust dir
-	certPEM, err := os.Create(filepath.Join(trustDir, "manifest.crt"))
-	if err != nil {
-		return err
-	}
-	err = pem.Encode(certPEM, &pem.Block {Type: "CERTIFICATE", Bytes: signedCert})
-	if err != nil {
-		return err
-	}
-	err = certPEM.Close()
-	if err != nil {
-		return err
-	}
-	err = os.Chmod(filepath.Join(trustDir, "manifest.crt"), 0640)
-	if err != nil {
-		return err
-	}
-
-	// Save uuid to trust dir
-	err = os.WriteFile(filepath.Join(trustDir, "uuid"), []byte(newUUID), 0640)
-	if err != nil {
-		return err
-	}
-
-	fmt.Printf("uuid, manifest.key, and manifest.crt saved in %s directory\n", trustDir)
-	return nil
-}
-
 var newUUIDCmd = cli.Command{
 	Name: "new-uuid",
 	Usage: "Generate a uuid and keypair",
+	Flags: []cli.Flag{
+		cli.StringFlag{
+			Name: "keysetname",
+			Usage: "Pathname of local keys repository. (optional)",
+		},
+	},
 	Action: doNewUUID,
 }
 
 func doNewUUID(ctx *cli.Context) error {
-	// Check if manifest credentials exist
+	keysetName := ctx.String("keysetname")
+	if keysetName == "" {
+		return errors.New("Please specify keysetname")
+	}
+
 	trustDir, err := getTrustPath()
 	if err != nil {
 		return err
 	}
-	if PathExists(filepath.Join(trustDir, "uuid")) {
-		return fmt.Errorf("Manifest credentials (uuid) already exist.")
+
+	destdir := filepath.Join(trustDir, "manifest")
+	if ! PathExists(destdir) {
+		err = os.Mkdir(destdir, 0755)
+		if err != nil {
+			return err
+		}
+	} else {
+		// Check if manifest credentials exist
+		if PathExists(filepath.Join(destdir, "uuid")) {
+			return errors.New("Manifest credentials (uuid) already exist.")
+		}
 	}
 
 	// Create new manifest credentials
-	newUUID := uuid.NewString()
-	return  generateManifestCreds(newUUID)
+	err = generateNewUUIDCreds(keysetName, destdir)
+	if err != nil {
+		return err
+	} else {
+		fmt.Printf("New credentials saved in %s directory\n", destdir)
+	}
+	return nil
 }
 
 var initKeysetCmd = cli.Command{
@@ -363,7 +238,7 @@ func doInitKeyset(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	keysetPath := filepath.Join(mosKeyPath,  keysetName)
+	keysetPath := filepath.Join(mosKeyPath, keysetName)
 	if PathExists(keysetPath) {
 		return  fmt.Errorf("%s keyset already exists.\n", keysetName)
 	}
