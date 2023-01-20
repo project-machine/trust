@@ -114,7 +114,7 @@ func getCA(CAname, keysetName string) (*x509.Certificate, any, error) {
 	}
 
 	// See if the CA exists
-	CApath := filepath.Join(keysetPath, CAname+"-ca")
+	CApath := filepath.Join(keysetPath, CAname)
 	if !PathExists(CApath) {
 		return nil, nil, fmt.Errorf("%s CA does not exist", CAname)
 	}
@@ -166,7 +166,7 @@ func generateNewUUIDCreds(keysetName, destdir string) error {
 	}
 
 	// get CA privkey and CA cert
-	CAcert, CAprivkey, err := getCA("manifest", keysetName)
+	CAcert, CAprivkey, err := getCA("manifest-ca", keysetName)
 	if err != nil {
 		return err
 	}
