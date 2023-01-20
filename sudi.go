@@ -70,7 +70,7 @@ func doSudiCert(VMname, keyset string) error {
 	}
 
 	// get the CA info
-	CAcert, CAprivkey, err := getCA("sudi", keyset)
+	CAcert, CAprivkey, err := getCA("sudi-ca", keyset)
 	if err != nil {
 		return err
 	}

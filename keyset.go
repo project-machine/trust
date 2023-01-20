@@ -16,7 +16,7 @@ import (
 	"github.com/google/uuid"
 )
 
-func generaterootCA(destdir string, caTemplate *x509.Certificate) error {
+func generaterootCA(destdir string, caTemplate *x509.Certificate, doguid bool) error {
 	// Generate keypair
 	privkey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -80,6 +80,16 @@ func generaterootCA(destdir string, caTemplate *x509.Certificate) error {
 	if err != nil {
 		return err
 	}
+
+	// Is a guid needed...
+	if doguid {
+		guid := uuid.NewString()
+		err = os.WriteFile(filepath.Join(destdir, "guid"), []byte(guid), 0640)
+		if err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -157,7 +167,7 @@ func generateCreds(destdir string, doguid bool, template *x509.Certificate) erro
 	}
 
 	// Is a guid needed...
-	if doguid == true {
+	if doguid {
 		guid := uuid.NewString()
 		err = os.WriteFile(filepath.Join(destdir, "guid"), []byte(guid), 0640)
 		if err != nil {
@@ -170,8 +180,8 @@ func generateCreds(destdir string, doguid bool, template *x509.Certificate) erro
 
 func generateMosCreds(keysetPath string, ctemplate *x509.Certificate) error {
 	type AddCertInfo struct {
-		cn   string
-		guid bool
+		cn     string
+		doguid bool
 	}
 	keyinfo := map[string]AddCertInfo{
 		"tpmpol-admin":   AddCertInfo{"TPM EAPolicy Admin", false},
@@ -184,7 +194,7 @@ func generateMosCreds(keysetPath string, ctemplate *x509.Certificate) error {
 
 	for key, CertInfo := range keyinfo {
 		ctemplate.Subject.CommonName = CertInfo.cn
-		err := generateCreds(filepath.Join(keysetPath, key), CertInfo.guid, ctemplate)
+		err := generateCreds(filepath.Join(keysetPath, key), CertInfo.doguid, ctemplate)
 		if err != nil {
 			return err
 		}
@@ -193,7 +203,7 @@ func generateMosCreds(keysetPath string, ctemplate *x509.Certificate) error {
 }
 
 func makeKeydirs(keysetPath string) error {
-	keyDirs := []string{"manifest-ca", "manifest", "sudi-ca", "tpmpol-admin", "tpmpol-luks", "uefi-db", "uki-limited", "uki-production", "uki-tpm"}
+	keyDirs := []string{"manifest-ca", "manifest", "sudi-ca", "tpmpol-admin", "tpmpol-luks", "uefi-db", "uki-limited", "uki-production", "uki-tpm", "pk", "kek"}
 	err := os.MkdirAll(keysetPath, 0750)
 	if err != nil {
 		return err
@@ -210,6 +220,10 @@ func makeKeydirs(keysetPath string) error {
 
 func initkeyset(keysetName string, Org []string) error {
 	var caTemplate, certTemplate x509.Certificate
+	const (
+		doGUID = true
+		noGUID = false
+	)
 	if keysetName == "" {
 		return errors.New("keyset parameter is missing")
 	}
@@ -249,7 +263,7 @@ func initkeyset(keysetName string, Org []string) error {
 	caTemplate.BasicConstraintsValid = true
 
 	// Generate the manifest rootCA
-	err = generaterootCA(filepath.Join(keysetPath, "manifest-ca"), &caTemplate)
+	err = generaterootCA(filepath.Join(keysetPath, "manifest-ca"), &caTemplate, noGUID)
 	if err != nil {
 		return err
 	}
@@ -257,11 +271,20 @@ func initkeyset(keysetName string, Org []string) error {
 	// Generate the sudi rootCA
 	caTemplate.Subject.CommonName = "SUDI rootCA"
 	caTemplate.NotAfter = time.Date(2099, time.December, 31, 23, 0, 0, 0, time.UTC)
-	err = generaterootCA(filepath.Join(keysetPath, "sudi-ca"), &caTemplate)
+	err = generaterootCA(filepath.Join(keysetPath, "sudi-ca"), &caTemplate, noGUID)
 	if err != nil {
 		return err
 	}
 
+	// Generate PK
+	caTemplate.Subject.CommonName = "UEFI PK"
+	caTemplate.NotAfter = time.Now().AddDate(50, 0, 0)
+	err = generaterootCA(filepath.Join(keysetPath, "pk"), &caTemplate, doGUID)
+	if err != nil {
+		return err
+	}
+
+	// Generate additional MOS credentials
 	certTemplate.Subject.Organization = Org
 	certTemplate.Subject.OrganizationalUnit = []string{"PuzzlesOS Machine Project " + keysetName}
 	certTemplate.NotBefore = time.Now()
@@ -270,6 +293,25 @@ func initkeyset(keysetName string, Org []string) error {
 	certTemplate.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageCodeSigning}
 
 	err = generateMosCreds(keysetPath, &certTemplate)
+	if err != nil {
+		return err
+	}
+
+	// Generate KEK, signed by PK
+	CAcert, CAprivkey, err := getCA("pk", keysetName)
+	if err != nil {
+		return err
+	}
+	// reuse certTemplate with some modifications
+	certTemplate.Subject.CommonName = "UEFI KEK"
+	certTemplate.NotAfter = time.Now().AddDate(50, 0, 0)
+	certTemplate.ExtKeyUsage = nil
+	err = SignCert(&certTemplate, CAcert, CAprivkey, filepath.Join(keysetPath, "kek"))
+	if err != nil {
+		return err
+	}
+	guid := uuid.NewString()
+	err = os.WriteFile(filepath.Join(keysetPath, "kek", "guid"), []byte(guid), 0640)
 	if err != nil {
 		return err
 	}
