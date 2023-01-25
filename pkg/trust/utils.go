@@ -1,6 +1,7 @@
 package trust
 
 import (
+	"bytes"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -132,3 +133,23 @@ func CopyFiles(src, dest string) error {
 	}
 	return gorecurcopy.CopyDirectory(src, dest)
 }
+
+// Run the command @args, passing @stdinString on standard input.  Return
+// the stdout, stderr, and any error returned.
+func RunWithStdall(stdinString string, args ...string) (string, string, error) {
+	cmd := exec.Command(args[0], args[1:]...)
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return "", "", fmt.Errorf("Failed getting stdin pipe %v: %w", args, err)
+	}
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	go func() {
+		defer stdin.Close()
+		io.WriteString(stdin, stdinString)
+	}()
+	err = cmd.Run()
+	return stdout.String(), stderr.String(), err
+}
+
