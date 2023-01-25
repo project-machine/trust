@@ -8,7 +8,7 @@ import (
 
 	"github.com/apex/log"
 	"github.com/go-git/go-git/v5"
-	"github.com/project-machine/trust/lib"
+	"github.com/project-machine/trust/pkg/trust"
 	"github.com/urfave/cli"
 )
 
@@ -61,7 +61,7 @@ var tpmPolicyGenCmd = cli.Command{
 }
 
 func doTpmPolicygen(ctx *cli.Context) error {
-	return lib.TpmGenPolicy(ctx)
+	return trust.TpmGenPolicy(ctx)
 }
 
 var extendPCR7Cmd = cli.Command{
@@ -71,7 +71,7 @@ var extendPCR7Cmd = cli.Command{
 }
 
 func doTpmExtend(ctx *cli.Context) error {
-	t, err := lib.NewTpm2()
+	t, err := trust.NewTpm2()
 	if err != nil {
 		return err
 	}
@@ -108,7 +108,7 @@ func doProvision(ctx *cli.Context) error {
 		return fmt.Errorf("No TPM.  No other subsystems have been implemented")
 	}
 
-	t, err := lib.NewTpm2()
+	t, err := trust.NewTpm2()
 	if err != nil {
 		return err
 	}
@@ -127,7 +127,7 @@ func doPreInstall(ctx *cli.Context) error {
 		return fmt.Errorf("No TPM.  No other subsystems have been implemented")
 	}
 
-	t, err := lib.NewTpm2()
+	t, err := trust.NewTpm2()
 	if err != nil {
 		return err
 	}
@@ -147,7 +147,7 @@ func doInitrdSetup(ctx *cli.Context) error {
 		return fmt.Errorf("No TPM.  No other subsystems have been implemented")
 	}
 
-	t, err := lib.NewTpm2()
+	t, err := trust.NewTpm2()
 	if err != nil {
 		return err
 	}

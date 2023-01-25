@@ -1,4 +1,4 @@
-package lib
+package trust
 
 type Truststore interface {
 	Provision(certPath, keyPath string) error

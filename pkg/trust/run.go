@@ -1,4 +1,4 @@
-package lib
+package trust
 
 import (
 	"bytes"

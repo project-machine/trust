@@ -1,4 +1,4 @@
-package lib
+package trust
 
 // This is the entrypoint for the tpm2 based provisioner
 
