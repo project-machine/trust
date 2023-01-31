@@ -153,3 +153,12 @@ func RunWithStdall(stdinString string, args ...string) (string, string, error) {
 	return stdout.String(), stderr.String(), err
 }
 
+// Run: run a command.  Return the output and an error if any.
+func Run(args ...string) (string, error) {
+	cmd := exec.Command(args[0], args[1:]...)
+        output, err := cmd.CombinedOutput()
+        if err != nil {
+                return string(output), fmt.Errorf("Failed running %v: %w", args, err)
+        }
+        return string(output), nil
+}

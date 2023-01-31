@@ -96,3 +96,19 @@ func VerifyManifest(contents []byte, sigPath, certPath, caPath string) error {
 
 	return nil
 }
+
+// Sign: sign a file
+// Sign the contents of @sourcePath using the key at @keyPath,
+// storing the result in the file called @signedpath
+func Sign(sourcePath, signedPath, keyPath string) error {
+	args := []string{"openssl", "dgst", "-sha256",
+		"-sign", keyPath,
+		"-out", signedPath,
+		sourcePath}
+	output, err := Run(args...)
+	if err != nil {
+		return fmt.Errorf("Signing error: %w\nOutput: %s\n", err, output)
+	}
+
+	return nil
+}
