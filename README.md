@@ -29,6 +29,35 @@ The following steps implement the trust workflow:
    keyring.  It can also load the provisioned key into the TPM and
    unmount the tmpfs.
 
+Trust also offers the following subcommands for administration:
+
+   'trust new-uuid --keysetname <name>' - generates a unique product-uuid,
+   rsa 2048-bit keypair, and an x509 certificate signed by the manifestCA
+   found in the keys repo name with --keysetname. The uuid is placed in
+   Subject's CN attribute of the certificate.
+   i.e. Subject: CN = manifest PRODUCT:62d38d9f-0d1d-441b-be21-5a7f4173fde1
+   The new uuid, keypair, and certificate are placed in the user's local
+   config directory, i.e. ~/.config/machine/trust/manifest/.
+
+   'trust initkeyset --keysetname <name> [ --org <organization> ]'  - generates
+   a new keys repository containing new keypairs, certs, and uuids. The new
+   key repository is located in the user's data directory,
+   ~/.local/share/machine/trust/keys/<name>.
+   The --org specifies the Organization attribute in the X509 Subject of the
+   generated certificates. The key repo may be used whereever a
+   keysetname is required.
+
+Exported functions in trust:
+
+   doSudiCert(VMname, keysetname string) - Generates a unique uuid,
+   rsa 2048-bit sudi keypair, and x509 certificate that is signed by the
+   SudiCA found in the keys repo named with keysetname. This function is
+   only called during provisioning. A unique uuid is also generated and added
+   to the Subject's CN field of the certificate as well as the Product UUID.
+   i.e.
+   "Subject: CN = 4cc76b82-948c-44b8-948c-1cc9a7d460d0, serialNumber =
+   PID:bc564363-2a8e-44fe-bb0e-54c7f9988ecf SN:4cc76b82-948c-44b8-948c-1cc9a7d460d0"
+
 ## Notes
 
 1. This is based on the concepts and scripts published at
