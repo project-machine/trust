@@ -48,26 +48,13 @@ func doSudiCert(VMname, keyset string) error {
 	if err != nil {
 		return err
 	}
-	productUUID, err := os.ReadFile(filepath.Join(trustDir, "manifest/uuid"))
+	content, err := os.ReadFile(filepath.Join(trustDir, "manifest/uuid"))
 	if err != nil {
 		return err
 	}
+	productUUID := string(content)
 
-	machineUUID := uuid.NewString()
-
-	// Subject's Serial no.
-	SubjectSerialno := fmt.Sprintf("PID:%s SN:%s", string(productUUID[:]), string(machineUUID[:]))
-
-	certTemplate := x509.Certificate{
-		Subject: pkix.Name{
-			SerialNumber: SubjectSerialno,
-			CommonName:   machineUUID,
-		},
-		NotBefore:   time.Now(),
-		NotAfter:    time.Date(2099, time.December, 31, 23, 0, 0, 0, time.UTC),
-		KeyUsage:    x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment | x509.KeyUsageDataEncipherment,
-		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
-	}
+	certTemplate := newCertTemplate(productUUID, uuid.NewString())
 
 	// get the CA info
 	CAcert, CAprivkey, err := getCA("sudi-ca", keyset)
@@ -85,4 +72,17 @@ func doSudiCert(VMname, keyset string) error {
 	}
 	log.Infof("Generated sudi key and cert saved in %s directory\n", sudiPath)
 	return nil
+}
+
+func newCertTemplate(productUUID, machineUUID string) x509.Certificate {
+	return x509.Certificate{
+		Subject: pkix.Name{
+			SerialNumber: fmt.Sprintf("PID:%s SN:%s", productUUID, machineUUID),
+			CommonName:   machineUUID,
+		},
+		NotBefore:   time.Now(),
+		NotAfter:    time.Date(2099, time.December, 31, 23, 0, 0, 0, time.UTC),
+		KeyUsage:    x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment | x509.KeyUsageDataEncipherment,
+		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+	}
 }
