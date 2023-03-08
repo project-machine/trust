@@ -9,6 +9,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -17,13 +18,41 @@ import (
 	"github.com/google/uuid"
 )
 
-// SignCert reates a CA signed certificate and keypair
+// SignCert creates a CA signed certificate and keypair in destdir
 func SignCert(template, CAcert *x509.Certificate, CAkey any, destdir string) error {
 	// Check if credentials already exist
 	if PathExists(filepath.Join(destdir, "privkey.pem")) {
 		return fmt.Errorf("credentials already exist in %s", destdir)
 	}
 
+	// Save private key
+	keyPEM, err := os.OpenFile(
+		filepath.Join(destdir, "privkey.pem"),
+		os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		return err
+	}
+	defer keyPEM.Close()
+
+	certPEM, err := os.OpenFile(
+		filepath.Join(destdir, "cert.pem"),
+		os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0640)
+	if err != nil {
+		return err
+	}
+	defer certPEM.Close()
+
+	if err := signCertToFiles(template, CAcert, CAkey, certPEM, keyPEM); err != nil {
+		os.Remove(keyPEM.Name())
+		os.Remove(certPEM.Name())
+		return err
+	}
+
+	return nil
+}
+
+func signCertToFiles(template, CAcert *x509.Certificate, CAkey any,
+	certWriter io.Writer, keyWriter io.Writer) error {
 	// Generate a keypair
 	privKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -57,49 +86,46 @@ func SignCert(template, CAcert *x509.Certificate, CAkey any, destdir string) err
 		return err
 	}
 
-	// Save the new key and signed certificate
-	defer func() {
-		if err != nil {
-			os.Remove(filepath.Join(destdir, "privkey.pem"))
-			os.Remove(filepath.Join(destdir, "cert.pem"))
-		}
-	}()
-
-	// Save private key
-	keyPEM, err := os.Create(filepath.Join(destdir, "privkey.pem"))
-	if err != nil {
-		return err
-	}
-	defer keyPEM.Close()
 	pkcs8, err := x509.MarshalPKCS8PrivateKey(privKey)
 	if err != nil {
 		return err
 	}
-	err = pem.Encode(keyPEM, &pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8})
-	if err != nil {
-		return err
-	}
-	err = os.Chmod(filepath.Join(destdir, "privkey.pem"), 0600)
+	err = pem.Encode(keyWriter, &pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8})
 	if err != nil {
 		return err
 	}
 
-	// Save signed certificate to trust dir
-	certPEM, err := os.Create(filepath.Join(destdir, "cert.pem"))
-	if err != nil {
-		return err
-	}
-	defer certPEM.Close()
-	err = pem.Encode(certPEM, &pem.Block{Type: "CERTIFICATE", Bytes: signedCert})
-	if err != nil {
-		return err
-	}
-	err = os.Chmod(filepath.Join(destdir, "cert.pem"), 0640)
+	err = pem.Encode(certWriter, &pem.Block{Type: "CERTIFICATE", Bytes: signedCert})
 	if err != nil {
 		return err
 	}
 
 	return nil
+}
+
+func readCertificateFromFile(CApath string) (*x509.Certificate, error) {
+	// Get the rootCA cert & privKey
+	certFile, err := os.ReadFile(CApath)
+	if err != nil {
+		return nil, err
+	}
+	pemBlock, _ := pem.Decode(certFile)
+	if pemBlock == nil {
+		return nil, errors.New("pem.Decode cert failed")
+	}
+	return x509.ParseCertificate(pemBlock.Bytes)
+}
+
+func readPrivKeyFromFile(keypath string) (any, error) {
+	keyFile, err := os.ReadFile(keypath)
+	if err != nil {
+		return nil, err
+	}
+	pemBlock, _ := pem.Decode(keyFile)
+	if pemBlock == nil {
+		return nil, errors.New("pem.Decode cert failed")
+	}
+	return x509.ParsePKCS8PrivateKey(pemBlock.Bytes)
 }
 
 func getCA(CAname, keysetName string) (*x509.Certificate, any, error) {
@@ -113,6 +139,7 @@ func getCA(CAname, keysetName string) (*x509.Certificate, any, error) {
 		return nil, nil, fmt.Errorf("keyset %s, does not exist", keysetName)
 	}
 
+	CAcert, err := readCertificateFromFile(filepath.Join(keysetPath, CAname, "cert.pem"))
 	// See if the CA exists
 	CApath := filepath.Join(keysetPath, CAname)
 	if !PathExists(CApath) {
@@ -120,31 +147,7 @@ func getCA(CAname, keysetName string) (*x509.Certificate, any, error) {
 	}
 
 	// Get the rootCA cert & privKey
-	certFile, err := os.ReadFile(filepath.Join(CApath, "cert.pem"))
-	if err != nil {
-		return nil, nil, err
-	}
-	pemBlock, _ := pem.Decode(certFile)
-	if pemBlock == nil {
-		return nil, nil, errors.New("pem.Decode cert failed")
-	}
-	CAcert, err := x509.ParseCertificate(pemBlock.Bytes)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	keyFile, err := os.ReadFile(filepath.Join(CApath, "privkey.pem"))
-	if err != nil {
-		return nil, nil, err
-	}
-	pemBlock, _ = pem.Decode(keyFile)
-	if pemBlock == nil {
-		return nil, nil, errors.New("pem.Decode cert failed")
-	}
-	CAkey, err := x509.ParsePKCS8PrivateKey(pemBlock.Bytes)
-	if err != nil {
-		return nil, nil, err
-	}
+	CAkey, err := readPrivKeyFromFile(filepath.Join(keysetPath, CAname, "privkey.pem"))
 
 	return CAcert, CAkey, nil
 }
