@@ -33,12 +33,12 @@ func doSudiCert(VMname, keyset string) error {
 	sudiPath := filepath.Join(sudiDir, VMname)
 	_, err = os.Stat(filepath.Join(sudiPath, "privkey.pem"))
 	if err == nil {
-		fmt.Printf("A sudi.key already exists for %s.\n", VMname)
+		fmt.Printf("A privkey.pem already exists for %s in %s.\n", VMname, sudiPath)
 		return err
 	}
 	_, err = os.Stat(filepath.Join(sudiPath, "cert.pem"))
 	if err == nil {
-		fmt.Printf("A sudi.crt already exists for %s.\n", VMname)
+		fmt.Printf("A cert.pem already exists for %s in %s.\n", VMname, sudiPath)
 		return err
 	}
 
