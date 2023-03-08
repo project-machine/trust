@@ -38,6 +38,7 @@ func SignCert(template, CAcert *x509.Certificate, CAkey any, destdir string) err
 		filepath.Join(destdir, "cert.pem"),
 		os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0640)
 	if err != nil {
+		os.Remove(keyPEM.Name())
 		return err
 	}
 	defer certPEM.Close()

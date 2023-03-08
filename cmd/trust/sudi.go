@@ -11,7 +11,55 @@ import (
 
 	"github.com/apex/log"
 	"github.com/google/uuid"
+	"github.com/urfave/cli"
 )
+
+var genSudiCmd = cli.Command{
+	Name:      "gen-sudi",
+	Usage:     "Generate and sign sudi cert",
+	UsageText: "CACert, private-key, output-dir, product-uuid [, machine-uuid]",
+	Action:    doGenSudi,
+}
+
+func doGenSudi(ctx *cli.Context) error {
+	args := ctx.Args()
+	if len(args) != 3 && len(args) != 4 {
+		return fmt.Errorf("Got %d args, want 3 or 4", len(args))
+	}
+	var myUUID string
+	caCertPath := args[0]
+	caKeyPath := args[1]
+	destdir := args[2]
+	prodUUID := args[3]
+	if len(args) == 5 {
+		myUUID = args[4]
+	} else {
+		myUUID = uuid.NewString()
+		fmt.Fprintf(os.Stderr, "Using machine-uuid '%s'\n", myUUID)
+	}
+
+	caCert, err := readCertificateFromFile(caCertPath)
+	if err != nil {
+		return err
+	}
+	caKey, err := readPrivKeyFromFile(caKeyPath)
+	if err != nil {
+		return err
+	}
+
+	certTmpl := newCertTemplate(prodUUID, myUUID)
+
+	if err := os.MkdirAll(destdir, 0755); err != nil {
+		return fmt.Errorf("Failed to create %s: %v", destdir, err)
+	}
+
+	if err := SignCert(&certTmpl, caCert, caKey, destdir); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stderr, "Wrote cert.pem and privkey.pem in %s\n", destdir)
+	return nil
+}
 
 // Generate sudi private key and cert.
 func doSudiCert(VMname, keyset string) error {

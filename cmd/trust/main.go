@@ -267,6 +267,7 @@ func main() {
 		extendPCR7Cmd,
 		newUUIDCmd,
 		initKeysetCmd,
+		genSudiCmd,
 	}
 	app.Flags = []cli.Flag{
 		cli.BoolFlag{
