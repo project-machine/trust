@@ -1,0 +1,42 @@
+base:
+  build_only: true
+  from:
+    type: docker
+    url: "docker://zothub.io/machine/bootkit/rootfs:0.0.5.230327-squashfs"
+
+rootfs-pkg:
+  build_only: true
+  from:
+    type: built
+    tag: base
+  run: |
+    pkgtool install udev kmod \
+        tpm2-tools e2fsprogs \
+        openssh-client openssh-server
+
+rootfs:
+  from:
+    type: built
+    tag: rootfs-pkg
+  import:
+    - ../trust
+  run: |
+    #!/bin/sh -ex
+    writefile() {
+      mkdir -p "${1%/*}"
+      echo "write $1" 1>&2
+      cat >"$1"
+    }
+
+    writefile /etc/systemd/network/20-wire-enp0s-dhcp.network <<"END"
+    [Match]
+    Name=enp0s*
+    [Network]
+    DHCP=yes
+    END
+
+    cp /stacker/trust /usr/bin/trust
+    chmod 755 /usr/bin/trust
+
+    ## FIXME
+    echo root:passw0rd | chpasswd
