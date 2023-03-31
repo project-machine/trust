@@ -1,0 +1,176 @@
+#!/bin/bash
+# shellcheck disable=SC2015,SC2039,SC2166
+
+VERBOSITY=0
+TEMP_D=""
+
+Usage() {
+    cat <<EOF
+Usage: ${0##*/} [ options ] output bootkit rootfs 
+
+   Build bootable media
+
+   options:
+      -v | --verbose         be more verbose
+           --cert=CERT.PEM   [req.] create soci with manifest cert CERT.PEM
+           --key=KEY.PEM     [req.] create soci with manifest cert key KEY.PEM
+           --oci-cache=DIR   use DIR for a oci cache.
+           --cdrom           build output in ISO9660 format (for a cdrom)
+EOF
+}
+
+stderr() { echo "$@" 1>&2; }
+fail() { local r=$?;  [ $r -eq 0 ] && r=1; failrc "$r" "$@"; }
+failrc() { local r=$1; shift; [ $# -eq 0 ] || stderr "$@"; exit "$r"; }
+bad_Usage() { Usage 1>&2; [ $# -eq 0 ] || stderr "$@"; return 1; }
+r() { stderr "execute:" "$@"; "$@"; }
+
+cleanup() {
+    [ -z "${TEMP_D}" -o ! -d "${TEMP_D}" ] || rm -Rf "${TEMP_D}"
+}
+
+debug() {
+    local level=${1}; shift;
+    [ "${level}" -gt "${VERBOSITY}" ] && return
+    stderr "${@}"
+}
+
+checkdeps() {
+    local c="" missing=""
+    for c in "$@"; do
+        command -v "$c" >/dev/null || missing="${missing} $c"
+    done
+    [ -z "$missing" ] && return 0
+    stderr "missing deps: ${missing}"
+    return 1
+}
+
+rfail() {
+    r "$@" && return
+    failrc $? "failed [$?]"
+}
+
+rq() {
+    local rc="" out=""
+    stderr "execute:" "$@"
+    out=$("$@" 2>&1) && return 0
+    rc=$?
+    echo "$out" 1>&2
+    stderr "failed [$rc]"
+    return $rc
+}
+
+# mount_callback_oci(oci, [--] thing args)
+# mount oci, cd to mountpoint, and call thing.
+mcboci() {
+    local url="$1" mp="" rc="0"
+    shift
+    mp=$(mktemp -d "${TMPDIR:-/tmp}/${0##*/}.XXXXXX") || return
+    set -- unshare --fork --mount --pid --user --map-user=0 --map-group=0 \
+        "$0" _mcb "$url" "$mp" "$@"
+    r "$@"
+    rc=$?
+    rm -Rf "$mp" || return
+    return $rc
+}
+
+_mcb() {
+    local url="$1" mp="$2" rc=0
+    shift 2
+    [ "$1" = "--" ] && shift
+    url=${url#oci:}
+    rq atomfs --debug mount --ro "$url" "$mp" || return
+    cd "$mp" || return
+    r "$@"
+}
+
+copycwd() {
+    local dest="$1"
+    rm -Rf "$dest" && mkdir -p "$dest" &&
+        cp -r "--target-directory=$dest" "${2:-.}"/*
+}
+
+main() {
+    local sopts="ho:v"
+    local lopts="help,cdrom,oci-cache:,cert:,key:,verbose"
+    local o=""
+    o=$(getopt "--name=${0##*/}" "--options=$sopts" "--long=$lopts" -- "$@") &&
+        eval set -- "$o" || { bad_Usage; return; }
+
+    local cur="" next=""
+    local cert="" key="" ocicache="" cdrom=""
+    while [ $# -ne 0 ]; do
+        cur="$1"
+        next="$2"
+        case "$cur" in
+            -h|--help) Usage ; exit 0;;
+               --cdrom) cdrom="--cdrom";;
+               --cert) cert="$next";;
+               --key) key="$next";;
+               --oci-cache) ocicache="$next";;
+            -v|--verbose) VERBOSITY=$((VERBOSITY+1));;
+            --) shift; break;;
+        esac
+        shift;
+    done
+
+    local output="$1" bkurl_in="$2" rfsurl_in="$3"
+    [ $# -eq 3 ] || { bad_Usage "got $# arguments ($*) expected 3"; return 1; }
+
+    [ -n "$cert" ] || { stderr "must provide --cert"; return 1; }
+    [ -n "$key" ] || { stderr "must provide --key"; return 1; }
+
+    checkdeps skopeo mosb oci-boot atomfs || return 1
+
+    TEMP_D=$(mktemp -d "${TMPDIR:-/tmp}/${0##*/}.XXXXXX") ||
+        fail "failed to make tempdir"
+    trap cleanup EXIT
+
+    if [ -z "$ocicache" ]; then
+        ocicache="$TEMP_D/oci"
+    fi
+
+    local dstname="live-boot/rootfs" dsttag="latest"
+    local rfsurl="oci:$ocicache:$dstname:$dsttag" 
+    local bkurl="oci:$ocicache:bootkit:latest"
+    local sociurl="$rfsurl-soci"
+    local bkoutd="${TEMP_D}/bootkit-out.d"
+
+    rq skopeo copy "$rfsurl_in" "$rfsurl" || return
+    rq skopeo copy "$bkurl_in" "$bkurl" || return
+
+    rq mosb soci build \
+        "--cert=$cert" "--key=$key" \
+        "--image-path=$dstname" \
+        "--target-name=${dstname##*/}" \
+        "--version=$dsttag" \
+        "--oci-layer=$rfsurl" \
+        "--soci-layer=$sociurl"
+
+    mcboci "$bkurl" -- copycwd "$bkoutd" || exit 1
+
+    local outd=""
+    outd=$(dirname "$output")
+
+    debug 0 "ovmf-{vars,code}.fd -> $outd/ovmf-{vars,code}.fd"
+    cp "$bkoutd/bootkit/ovmf-vars.fd" "$bkoutd/bootkit/ovmf-code.fd" "$outd/" ||
+        fail "failed to copy ovmf files from bootkit"
+
+    local debug=""
+    local cmdline="console=ttyS0,115200"
+    [ "$VERBOSITY" -ge 1 ] && debug="--debug"
+    rq oci-boot \
+        ${debug:+"$debug"} ${cdrom:+"$cdrom"} \
+        ${cmdline:+"--cmdline=${cmdline}"} \
+        "$output" "$bkurl" "$sociurl" "$rfsurl"
+
+    debug 0 "wrote $output"
+}
+
+if [ "$1" = "_mcb" ]; then
+    shift
+    _mcb "$@"
+    exit
+fi
+main "$@"
+# vi: ts=4 expandtab
