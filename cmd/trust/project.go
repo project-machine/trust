@@ -16,7 +16,53 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/urfave/cli"
 )
+
+var newUUIDCmd = cli.Command{
+	Name:  "new-uuid",
+	Usage: "Generate a uuid and keypair",
+	Flags: []cli.Flag{
+		cli.StringFlag{
+			Name:  "keysetname",
+			Usage: "Pathname of local keys repository. (optional)",
+		},
+	},
+	Action: doNewUUID,
+}
+
+func doNewUUID(ctx *cli.Context) error {
+	keysetName := ctx.String("keysetname")
+	if keysetName == "" {
+		return errors.New("Please specify keysetname")
+	}
+
+	trustDir, err := getTrustPath()
+	if err != nil {
+		return err
+	}
+
+	destdir := filepath.Join(trustDir, "manifest")
+	if !PathExists(destdir) {
+		err = os.Mkdir(destdir, 0750)
+		if err != nil {
+			return err
+		}
+	} else {
+		// Check if manifest credentials exist
+		if PathExists(filepath.Join(destdir, "uuid")) {
+			return errors.New("manifest credentials (uuid) already exist")
+		}
+	}
+
+	// Create new manifest credentials
+	err = generateNewUUIDCreds(keysetName, destdir)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("New credentials saved in %s directory\n", destdir)
+	return nil
+}
 
 // SignCert creates a CA signed certificate and keypair in destdir
 func SignCert(template, CAcert *x509.Certificate, CAkey any, destdir string) error {
