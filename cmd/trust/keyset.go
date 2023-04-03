@@ -13,7 +13,10 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/apex/log"
+	"github.com/go-git/go-git/v5"
 	"github.com/google/uuid"
+	"github.com/urfave/cli"
 )
 
 func generaterootCA(destdir string, caTemplate *x509.Certificate, doguid bool) error {
@@ -326,4 +329,55 @@ func initkeyset(keysetName string, Org []string) error {
 
 	// TODO: Generate new sudi certs for VMs
 	return nil
+}
+
+var initKeysetCmd = cli.Command{
+	Name:  "initkeyset",
+	Usage: "Generate keyset for MOS",
+	Flags: []cli.Flag{
+		cli.StringFlag{
+			Name:  "keysetname",
+			Usage: "Name of the keyset to use for mos.",
+		},
+		cli.StringSliceFlag{
+			Name:  "Org",
+			Usage: "X509-Organization field to add to certificates when generating a new keysey. (optional)",
+		},
+	},
+	Action: doInitKeyset,
+}
+
+func doInitKeyset(ctx *cli.Context) error {
+	keysetName := ctx.String("keysetname")
+	Org := ctx.StringSlice("Org")
+
+	if keysetName == "" {
+		return errors.New("Please specify keysetname")
+	}
+
+	if Org == nil {
+		log.Warnf("X509-Organization field not specified for new certificates.")
+	}
+
+	// See if keyset exists
+	mosKeyPath, err := getMosKeyPath()
+	if err != nil {
+		return err
+	}
+	keysetPath := filepath.Join(mosKeyPath, keysetName)
+	if PathExists(keysetPath) {
+		return fmt.Errorf("%s keyset already exists", keysetName)
+	}
+
+	// git clone if keyset is snakeoil
+	if keysetName == "snakeoil" {
+		_, err = git.PlainClone(keysetPath, false, &git.CloneOptions{URL: "https://github.com/project-machine/keys.git"})
+		if err != nil {
+			os.Remove(keysetPath)
+			return err
+		}
+		return nil
+	}
+	// Otherwise, generate a new keyset
+	return initkeyset(keysetName, Org)
 }
