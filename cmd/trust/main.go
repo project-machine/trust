@@ -26,8 +26,14 @@ func main() {
 		provisionCmd,
 		tpmPolicyGenCmd,
 		extendPCR7Cmd,
+
+		// keyset
+		keysetCmd,
+
+		// project
 		newUUIDCmd,
-		initKeysetCmd,
+
+		// sudo
 		genSudiCmd,
 	}
 	app.Flags = []cli.Flag{

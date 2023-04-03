@@ -331,32 +331,43 @@ func initkeyset(keysetName string, Org []string) error {
 	return nil
 }
 
-var initKeysetCmd = cli.Command{
-	Name:  "initkeyset",
-	Usage: "Generate keyset for MOS",
-	Flags: []cli.Flag{
-		cli.StringFlag{
-			Name:  "keysetname",
-			Usage: "Name of the keyset to use for mos.",
+var keysetCmd = cli.Command{
+	Name:  "keyset",
+	Usage: "Administer keysets for mos",
+	Subcommands: []cli.Command{
+		cli.Command{
+			Name: "list",
+			Action: doListKeysets,
+			Usage: "list keysets",
 		},
-		cli.StringSliceFlag{
-			Name:  "Org",
-			Usage: "X509-Organization field to add to certificates when generating a new keysey. (optional)",
+		cli.Command{
+			Name: "add",
+			Action: doAddKeyset,
+			Usage: "add a new keyset",
+			Flags: []cli.Flag{
+				cli.StringSliceFlag{
+					Name:  "org, Org, organization",
+					Usage: "X509-Organization field to add to certificates when generating a new keyset. (optional)",
+				},
+			},
 		},
 	},
-	Action: doInitKeyset,
 }
 
-func doInitKeyset(ctx *cli.Context) error {
-	keysetName := ctx.String("keysetname")
-	Org := ctx.StringSlice("Org")
-
-	if keysetName == "" {
-		return errors.New("Please specify keysetname")
+func doAddKeyset(ctx *cli.Context) error {
+	args := ctx.Args()
+	if len(args) != 1 {
+		return errors.New("A name for the new keyset is required")
 	}
 
+	keysetName := args[0]
+	if keysetName == "" {
+		return errors.New("Please specify keyset name")
+	}
+
+	Org := ctx.StringSlice("org")
 	if Org == nil {
-		log.Warnf("X509-Organization field not specified for new certificates.")
+		log.Infof("X509-Organization field for new certificates not specified.")
 	}
 
 	// See if keyset exists
@@ -364,6 +375,7 @@ func doInitKeyset(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
+
 	keysetPath := filepath.Join(mosKeyPath, keysetName)
 	if PathExists(keysetPath) {
 		return fmt.Errorf("%s keyset already exists", keysetName)
@@ -380,4 +392,21 @@ func doInitKeyset(ctx *cli.Context) error {
 	}
 	// Otherwise, generate a new keyset
 	return initkeyset(keysetName, Org)
+}
+
+func doListKeysets(ctx *cli.Context) error {
+	moskeysetPath, err := getMosKeyPath()
+	if err != nil {
+		return err
+	}
+	dirs,  err := os.ReadDir(moskeysetPath)
+	if err != nil {
+		return fmt.Errorf("Failed reading keys directory %q: %w", moskeysetPath, err)
+	}
+
+	for _, keyname := range dirs {
+		fmt.Printf("%s\n", keyname.Name())
+	}
+
+	return nil
 }
