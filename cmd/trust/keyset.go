@@ -16,6 +16,7 @@ import (
 	"github.com/apex/log"
 	"github.com/go-git/go-git/v5"
 	"github.com/google/uuid"
+	"github.com/project-machine/trust/pkg/trust"
 	"github.com/urfave/cli"
 )
 
@@ -320,7 +321,12 @@ func initkeyset(keysetName string, Org []string) error {
 	}
 
 	// Generate sample uuid, manifest key and cert
-	err = generateNewUUIDCreds(keysetName, filepath.Join(keysetPath, "manifest"))
+	mName := filepath.Join(keysetPath, "manifest", "default")
+	if err := trust.EnsureDir(mName); err != nil {
+		return err
+	}
+
+	err = generateNewUUIDCreds(keysetName, mName)
 	if err != nil {
 		return err
 	}
@@ -336,14 +342,15 @@ var keysetCmd = cli.Command{
 	Usage: "Administer keysets for mos",
 	Subcommands: []cli.Command{
 		cli.Command{
-			Name: "list",
+			Name:   "list",
 			Action: doListKeysets,
-			Usage: "list keysets",
+			Usage:  "list keysets",
 		},
 		cli.Command{
-			Name: "add",
-			Action: doAddKeyset,
-			Usage: "add a new keyset",
+			Name:      "add",
+			Action:    doAddKeyset,
+			Usage:     "add a new keyset",
+			ArgsUsage: "<keyset-name>",
 			Flags: []cli.Flag{
 				cli.StringSliceFlag{
 					Name:  "org, Org, organization",

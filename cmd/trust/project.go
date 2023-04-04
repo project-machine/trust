@@ -7,7 +7,6 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
-	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -16,51 +15,60 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pkg/errors"
 	"github.com/urfave/cli"
 )
 
-var newUUIDCmd = cli.Command{
-	Name:  "new-uuid",
+var projectCmd = cli.Command{
+	Name:  "project",
 	Usage: "Generate a uuid and keypair",
-	Flags: []cli.Flag{
-		cli.StringFlag{
-			Name:  "keysetname",
-			Usage: "Pathname of local keys repository. (optional)",
+	Subcommands: []cli.Command{
+		cli.Command{
+			Name:      "list",
+			Action:    doListProjects,
+			Usage:     "list projects",
+			ArgsUsage: "<keyset-name>",
+		},
+		cli.Command{
+			Name:      "add",
+			Action:    doAddProject,
+			Usage:     "add a new project",
+			ArgsUsage: "<keyset-name> <project-name>",
 		},
 	},
-	Action: doNewUUID,
 }
 
-func doNewUUID(ctx *cli.Context) error {
-	keysetName := ctx.String("keysetname")
-	if keysetName == "" {
-		return errors.New("Please specify keysetname")
+func doAddProject(ctx *cli.Context) error {
+	args := ctx.Args()
+	if len(args) != 2 {
+		return errors.New("Projects belong to a keyset. Specify keyset name to list the projects in a keyset.")
 	}
 
-	trustDir, err := getTrustPath()
+	keysetName := args[0]
+	projName := args[1]
+
+	trustDir, err := getMosKeyPath()
 	if err != nil {
 		return err
 	}
 
-	destdir := filepath.Join(trustDir, "manifest")
-	if !PathExists(destdir) {
-		err = os.Mkdir(destdir, 0750)
-		if err != nil {
-			return err
-		}
-	} else {
-		// Check if manifest credentials exist
-		if PathExists(filepath.Join(destdir, "uuid")) {
-			return errors.New("manifest credentials (uuid) already exist")
-		}
+	keysetPath := filepath.Join(trustDir, keysetName)
+	projPath := filepath.Join(keysetPath, "manifest", projName)
+	if PathExists(projPath) {
+		return fmt.Errorf("Project %s already exists", projName)
+	}
+
+	if err = os.Mkdir(projPath, 0750); err != nil {
+		return errors.Wrapf(err, "Failed creating project directory %q", projPath)
 	}
 
 	// Create new manifest credentials
-	err = generateNewUUIDCreds(keysetName, destdir)
+	err = generateNewUUIDCreds(keysetName, projPath)
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "Failed creating new project")
 	}
-	fmt.Printf("New credentials saved in %s directory\n", destdir)
+
+	fmt.Printf("New credentials saved in %s directory\n", projPath)
 	return nil
 }
 
@@ -231,6 +239,41 @@ func generateNewUUIDCreds(keysetName, destdir string) error {
 		os.Remove(filepath.Join(destdir, "privkey.pem"))
 		os.Remove(filepath.Join(destdir, "cert.pem"))
 		return err
+	}
+
+	return nil
+}
+
+func doListProjects(ctx *cli.Context) error {
+	args := ctx.Args()
+	if len(args) == 0 {
+		return errors.New("Projects belong to a keyset. Specify keyset name to list the projects in a keyset.")
+	}
+
+	keysetName := args[0]
+	trustDir, err := getMosKeyPath()
+	if err != nil {
+		return err
+	}
+	keysetPath := filepath.Join(trustDir, keysetName)
+	if !PathExists(keysetPath) {
+		return fmt.Errorf("Keyset not found: %s", keysetName)
+	}
+
+	keysetPath = filepath.Join(keysetPath, "manifest")
+	if !PathExists(keysetPath) {
+		fmt.Printf("No projects found")
+		return nil
+	}
+
+	dirs,  err := os.ReadDir(keysetPath)
+	if err != nil {
+		return fmt.Errorf("Failed reading keys directory %q: %w", trustDir, err)
+	}
+
+	fmt.Printf("Projects in %s:\n", keysetName)
+	for _, keyname := range dirs {
+		fmt.Printf("%s\n", keyname.Name())
 	}
 
 	return nil
