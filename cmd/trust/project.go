@@ -98,7 +98,6 @@ func doListProjects(ctx *cli.Context) error {
 		return fmt.Errorf("Failed reading keys directory %q: %w", trustDir, err)
 	}
 
-	fmt.Printf("Projects in %s:\n", keysetName)
 	for _, keyname := range dirs {
 		fmt.Printf("%s\n", keyname.Name())
 	}

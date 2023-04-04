@@ -5,3 +5,9 @@ trust: cmd/trust/*.go pkg/trust/*.go
 
 clean:
 	rm -f trust
+
+.PHONY: test
+test: trust
+	bats tests/keyset.bats
+	bats tests/project.bats
+	bats tests/sudi.bats

@@ -1,0 +1,33 @@
+load helpers
+
+function setup() {
+	common_setup
+}
+
+function teardown() {
+	common_teardown
+}
+
+@test "Keyset creation creates sudi" {
+	trust keyset add zomg
+	trust sudi list zomg default
+}
+
+@test "Project creation creates sudi" {
+	trust keyset add zomg
+	trust project add zomg newproject
+	trust sudi list zomg newproject
+}
+
+@test "Create sudi" {
+	trust keyset add zomg
+	trust project add zomg newproject
+	trust sudi add zomg newproject  # auto-create uuid
+	trust sudi add zomg newproject 88db65c5-8896-4908-bf8d-8ac04ff20d5c
+	[ -e "$MDIR/trust/keys/zomg/manifest/newproject/sudi/88db65c5-8896-4908-bf8d-8ac04ff20d5c/cert.pem" ]
+	trust sudi add zomg newproject SN0001
+	trust sudi add zomg newproject SN0002
+	trust sudi list zomg newproject | grep SN0001
+	cnt=$(trust sudi list zomg newproject | wc -l)
+	[ $cnt -eq 4 ]
+}
