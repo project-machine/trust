@@ -29,31 +29,24 @@ var sudiCmd = cli.Command{
 			Name:      "add",
 			Action:    doGenSudi,
 			Usage:     "add a new sudi key to project",
-			Flags: []cli.Flag{
-				cli.StringFlag {
-					Name: "uuid",
-					Usage: "specify a machine-uuid.  If unspecified, use random.",
-				},
-			},
-			ArgsUsage: "<keyset-name> <project-name> <serial-number>",
+			ArgsUsage: "<keyset-name> <project-name> [<serial-number>|uuid]",
 		},
 	},
 }
 
 // ~/.local/share/machine/trust/keys/
-//      keyset1/manifest/project-name/{uuid,privkey.pem,sudi.pem}
-//      keyset1/sudi/host-serial/{uuid,privkey.pem,sudi.pem,project-name}
+//      keyset1/manifest/project-name/{uuid,privkey.pem,cert.pem}
+//      keyset1/manifest/project-name/sudi/host-serial/{uuid,privkey.pem,cert.pem}
 func doGenSudi(ctx *cli.Context) error {
 	args := ctx.Args()
-	if len(args) != 3 && len(args) != 4 {
+	if len(args) != 2 && len(args) != 3 {
 		return fmt.Errorf("Wrong number of arguments (see \"--help\")")
 	}
 	keysetName := args[0]
 	projName := args[1]
-	serial := args[2]
 	var myUUID string
-	if ctx.IsSet("uuid") {
-		myUUID = ctx.String("uuid")
+	if len(args) == 3 {
+		myUUID = args[2]
 	} else {
 		myUUID = uuid.NewString()
 	}
@@ -73,7 +66,7 @@ func doGenSudi(ctx *cli.Context) error {
 	}
 
 	capath := filepath.Join(keysetPath, "sudi-ca")
-	snPath := filepath.Join(projPath, "sudi", serial)
+	snPath := filepath.Join(projPath, "sudi", myUUID)
 	prodUUID, err := os.ReadFile(filepath.Join(projPath, "uuid"))
 	if err != nil {
 		return errors.Wrapf(err, "Failed reading project UUID")
@@ -146,7 +139,6 @@ func doListSudi(ctx *cli.Context) error {
 		return fmt.Errorf("Failed reading sudi directory %q: %w", dir, err)
 	}
 
-	fmt.Printf("Sudis in %s:%s:\n", keysetName, projName)
 	for _, sn := range serials {
 		fmt.Printf("%s\n", sn.Name())
 	}
