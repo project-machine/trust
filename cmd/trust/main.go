@@ -31,7 +31,7 @@ func main() {
 		keysetCmd,
 
 		// project
-		newUUIDCmd,
+		projectCmd,
 
 		// sudo
 		genSudiCmd,
