@@ -3,122 +3,106 @@ package main
 import (
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
-	"github.com/apex/log"
 	"github.com/google/uuid"
+	"github.com/pkg/errors"
+	"github.com/project-machine/trust/pkg/trust"
 	"github.com/urfave/cli"
 )
 
-var genSudiCmd = cli.Command{
-	Name:      "gen-sudi",
+var sudiCmd = cli.Command{
+	Name:      "sudi",
 	Usage:     "Generate and sign sudi cert",
 	UsageText: "CACert, private-key, output-dir, product-uuid [, machine-uuid]",
-	Action:    doGenSudi,
+	Subcommands: []cli.Command{
+		cli.Command{
+			Name:      "list",
+			Action:    doListSudi,
+			Usage:     "list sudi keys",
+			ArgsUsage: "<keyset-name> <project-name>",
+		},
+		cli.Command{
+			Name:      "add",
+			Action:    doGenSudi,
+			Usage:     "add a new sudi key to project",
+			Flags: []cli.Flag{
+				cli.StringFlag {
+					Name: "uuid",
+					Usage: "specify a machine-uuid.  If unspecified, use random.",
+				},
+			},
+			ArgsUsage: "<keyset-name> <project-name> <serial-number>",
+		},
+	},
 }
 
+// ~/.local/share/machine/trust/keys/
+//      keyset1/manifest/project-name/{uuid,privkey.pem,sudi.pem}
+//      keyset1/sudi/host-serial/{uuid,privkey.pem,sudi.pem,project-name}
 func doGenSudi(ctx *cli.Context) error {
 	args := ctx.Args()
 	if len(args) != 3 && len(args) != 4 {
-		return fmt.Errorf("Got %d args, want 3 or 4", len(args))
+		return fmt.Errorf("Wrong number of arguments (see \"--help\")")
 	}
+	keysetName := args[0]
+	projName := args[1]
+	serial := args[2]
 	var myUUID string
-	caCertPath := args[0]
-	caKeyPath := args[1]
-	destdir := args[2]
-	prodUUID := args[3]
-	if len(args) == 5 {
-		myUUID = args[4]
+	if ctx.IsSet("uuid") {
+		myUUID = ctx.String("uuid")
 	} else {
 		myUUID = uuid.NewString()
-		fmt.Fprintf(os.Stderr, "Using machine-uuid '%s'\n", myUUID)
 	}
 
-	caCert, err := readCertificateFromFile(caCertPath)
+	trustDir, err := getMosKeyPath()
 	if err != nil {
 		return err
 	}
-	caKey, err := readPrivKeyFromFile(caKeyPath)
+	keysetPath := filepath.Join(trustDir, keysetName)
+	if !PathExists(keysetPath) {
+		return fmt.Errorf("Keyset not found: %s", keysetName)
+	}
+
+	projPath := filepath.Join(keysetPath, "manifest", projName)
+	if !PathExists(projPath) {
+		return fmt.Errorf("Project not found: %s", projName)
+	}
+
+	capath := filepath.Join(keysetPath, "sudi-ca")
+	snPath := filepath.Join(projPath, "sudi", serial)
+	prodUUID, err := os.ReadFile(filepath.Join(projPath, "uuid"))
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "Failed reading project UUID")
 	}
 
-	certTmpl := newCertTemplate(prodUUID, myUUID)
-
-	if err := os.MkdirAll(destdir, 0755); err != nil {
-		return fmt.Errorf("Failed to create %s: %v", destdir, err)
-	}
-
-	if err := SignCert(&certTmpl, caCert, caKey, destdir); err != nil {
-		return err
-	}
-
-	fmt.Fprintf(os.Stderr, "Wrote cert.pem and privkey.pem in %s\n", destdir)
-	return nil
-}
-
-// Generate sudi private key and cert.
-func doSudiCert(VMname, keyset string) error {
-	if VMname == "" {
-		return errors.New("VM name must be provided")
-	}
-
-	// Check if the VM has been initialized
-	cPath := ConfPath(VMname)
-	if !PathExists(cPath) {
-		return fmt.Errorf("%s has not been initialized", VMname)
-	}
-
-	// Check if a sudi key or cert already exists for the VM
-	sudiDir, err := getSudiDir()
+	// read the project CA certificate
+	caCert, err := readCertificateFromFile(filepath.Join(capath, "cert.pem"))
 	if err != nil {
-		return err
-	}
-	sudiPath := filepath.Join(sudiDir, VMname)
-	_, err = os.Stat(filepath.Join(sudiPath, "privkey.pem"))
-	if err == nil {
-		fmt.Printf("A privkey.pem already exists for %s in %s.\n", VMname, sudiPath)
-		return err
-	}
-	_, err = os.Stat(filepath.Join(sudiPath, "cert.pem"))
-	if err == nil {
-		fmt.Printf("A cert.pem already exists for %s in %s.\n", VMname, sudiPath)
-		return err
+		return errors.Wrapf(err, "Failed reading SUDI CA certificate")
 	}
 
-	// Prepare the cert template
-	// Get this machine's UUID to add to the Subject in cert
-	trustDir, err := getTrustPath()
+	// read the project CA private key to sign the sudi key with
+	caKey, err := readPrivKeyFromFile(filepath.Join(capath, "privkey.pem"))
 	if err != nil {
-		return err
-	}
-	content, err := os.ReadFile(filepath.Join(trustDir, "manifest/uuid"))
-	if err != nil {
-		return err
-	}
-	productUUID := string(content)
-
-	certTemplate := newCertTemplate(productUUID, uuid.NewString())
-
-	// get the CA info
-	CAcert, CAprivkey, err := getCA("sudi-ca", keyset)
-	if err != nil {
-		return err
+		return errors.Wrapf(err, "Failed reading SUDI CA key")
 	}
 
-	err = os.MkdirAll(sudiPath, 0755)
-	if err != nil {
-		return err
+	certTmpl := newCertTemplate(string(prodUUID), myUUID)
+
+	if err := trust.EnsureDir(snPath); err != nil {
+		return errors.Wrapf(err, "Failed creating new SUDI directory")
 	}
-	err = SignCert(&certTemplate, CAcert, CAprivkey, sudiPath)
-	if err != nil {
-		return err
+
+
+	if err := SignCert(&certTmpl, caCert, caKey, snPath); err != nil {
+		os.RemoveAll(snPath)
+		return errors.Wrapf(err, "Failed creating new SUDI keypair")
 	}
-	log.Infof("Generated sudi key and cert saved in %s directory\n", sudiPath)
+
 	return nil
 }
 
@@ -133,4 +117,39 @@ func newCertTemplate(productUUID, machineUUID string) x509.Certificate {
 		KeyUsage:    x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment | x509.KeyUsageDataEncipherment,
 		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
 	}
+}
+
+func doListSudi(ctx *cli.Context) error {
+	args := ctx.Args()
+	if len(args) != 2 {
+		return fmt.Errorf("Wrong number of arguments (see \"--help\")")
+	}
+	keysetName := args[0]
+	projName := args[1]
+	trustDir, err := getMosKeyPath()
+	if err != nil {
+		return err
+	}
+	keysetPath := filepath.Join(trustDir, keysetName)
+	if !PathExists(keysetPath) {
+		return fmt.Errorf("Keyset not found: %s", keysetName)
+	}
+
+	projPath := filepath.Join(keysetPath, "manifest", projName)
+	if !PathExists(projPath) {
+		return fmt.Errorf("Project not found: %s", projName)
+	}
+
+	dir := filepath.Join(projPath, "sudi")
+	serials,  err := os.ReadDir(dir)
+	if err != nil {
+		return fmt.Errorf("Failed reading sudi directory %q: %w", dir, err)
+	}
+
+	fmt.Printf("Sudis in %s:%s:\n", keysetName, projName)
+	for _, sn := range serials {
+		fmt.Printf("%s\n", sn.Name())
+	}
+
+	return nil
 }

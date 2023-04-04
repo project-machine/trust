@@ -34,7 +34,7 @@ func main() {
 		projectCmd,
 
 		// sudo
-		genSudiCmd,
+		sudiCmd,
 	}
 	app.Flags = []cli.Flag{
 		cli.BoolFlag{

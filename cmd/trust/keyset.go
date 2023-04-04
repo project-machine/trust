@@ -6,7 +6,6 @@ import (
 	"crypto/sha1"
 	"crypto/x509"
 	"encoding/pem"
-	"errors"
 	"fmt"
 	"math/big"
 	"os"
@@ -16,6 +15,7 @@ import (
 	"github.com/apex/log"
 	"github.com/go-git/go-git/v5"
 	"github.com/google/uuid"
+	"github.com/pkg/errors"
 	"github.com/project-machine/trust/pkg/trust"
 	"github.com/urfave/cli"
 )
@@ -322,18 +322,18 @@ func initkeyset(keysetName string, Org []string) error {
 
 	// Generate sample uuid, manifest key and cert
 	mName := filepath.Join(keysetPath, "manifest", "default")
-	if err := trust.EnsureDir(mName); err != nil {
-		return err
+	if err = trust.EnsureDir(mName); err != nil {
+		return errors.Wrapf(err, "Failed creating default project directory")
+	}
+	sName := filepath.Join(mName, "sudi")
+	if err = trust.EnsureDir(sName); err != nil {
+		return errors.Wrapf(err, "Failed creating default sudi directory")
 	}
 
-	err = generateNewUUIDCreds(keysetName, mName)
-	if err != nil {
-		return err
+	if err = generateNewUUIDCreds(keysetName, mName); err != nil {
+		return errors.Wrapf(err, "Failed creating default project keyset")
 	}
 
-	// TODO: Generate new manifest cert
-
-	// TODO: Generate new sudi certs for VMs
 	return nil
 }
 
@@ -364,7 +364,7 @@ var keysetCmd = cli.Command{
 func doAddKeyset(ctx *cli.Context) error {
 	args := ctx.Args()
 	if len(args) != 1 {
-		return errors.New("A name for the new keyset is required")
+		return errors.New("A name for the new keyset is required (please see \"--help\")")
 	}
 
 	keysetName := args[0]
@@ -402,6 +402,9 @@ func doAddKeyset(ctx *cli.Context) error {
 }
 
 func doListKeysets(ctx *cli.Context) error {
+	if len(ctx.Args()) != 0 {
+		return fmt.Errorf("Wrong number of arguments (please see \"--help\")")
+	}
 	moskeysetPath, err := getMosKeyPath()
 	if err != nil {
 		return err

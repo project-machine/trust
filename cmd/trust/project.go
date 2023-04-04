@@ -1,5 +1,7 @@
 package main
 
+// Project == product
+
 import (
 	"crypto/rand"
 	"crypto/rsa"
@@ -16,6 +18,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
+	"github.com/project-machine/trust/pkg/trust"
 	"github.com/urfave/cli"
 )
 
@@ -65,7 +68,13 @@ func doAddProject(ctx *cli.Context) error {
 	// Create new manifest credentials
 	err = generateNewUUIDCreds(keysetName, projPath)
 	if err != nil {
+		os.RemoveAll(projPath)
 		return errors.Wrapf(err, "Failed creating new project")
+	}
+
+	if err := trust.EnsureDir(filepath.Join(projPath, "sudi")); err != nil {
+		os.RemoveAll(projPath)
+		return errors.Wrapf(err, "Failed creating sudi directory for new project")
 	}
 
 	fmt.Printf("New credentials saved in %s directory\n", projPath)
