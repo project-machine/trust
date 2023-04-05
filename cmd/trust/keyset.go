@@ -40,7 +40,7 @@ func generateMosCreds(keysetPath string, ctemplate *x509.Certificate) error {
 }
 
 func makeKeydirs(keysetPath string) error {
-	keyDirs := []string{"manifest-ca", "manifest", "sudi-ca", "tpmpol-admin", "tpmpol-luks", "uefi-db", "uki-limited", "uki-production", "uki-tpm", "pk", "kek"}
+	keyDirs := []string{"manifest-ca", "manifest", "sudi-ca", "tpmpol-admin", "tpmpol-luks", "uefi-db", "uki-limited", "uki-production", "uki-tpm", "uefi-pk", "uefi-kek"}
 	err := os.MkdirAll(keysetPath, 0750)
 	if err != nil {
 		return err
@@ -116,7 +116,7 @@ func initkeyset(keysetName string, Org []string) error {
 	// Generate PK
 	caTemplate.Subject.CommonName = "UEFI PK"
 	caTemplate.NotAfter = time.Now().AddDate(50, 0, 0)
-	err = generaterootCA(filepath.Join(keysetPath, "pk"), &caTemplate, doGUID)
+	err = generaterootCA(filepath.Join(keysetPath, "uefi-pk"), &caTemplate, doGUID)
 	if err != nil {
 		return err
 	}
@@ -135,7 +135,7 @@ func initkeyset(keysetName string, Org []string) error {
 	}
 
 	// Generate KEK, signed by PK
-	CAcert, CAprivkey, err := getCA("pk", keysetName)
+	CAcert, CAprivkey, err := getCA("uefi-pk", keysetName)
 	if err != nil {
 		return err
 	}
@@ -143,12 +143,12 @@ func initkeyset(keysetName string, Org []string) error {
 	certTemplate.Subject.CommonName = "UEFI KEK"
 	certTemplate.NotAfter = time.Now().AddDate(50, 0, 0)
 	certTemplate.ExtKeyUsage = nil
-	err = SignCert(&certTemplate, CAcert, CAprivkey, filepath.Join(keysetPath, "kek"))
+	err = SignCert(&certTemplate, CAcert, CAprivkey, filepath.Join(keysetPath, "uefi-kek"))
 	if err != nil {
 		return err
 	}
 	guid := uuid.NewString()
-	err = os.WriteFile(filepath.Join(keysetPath, "kek", "guid"), []byte(guid), 0640)
+	err = os.WriteFile(filepath.Join(keysetPath, "uefi-kek", "guid"), []byte(guid), 0640)
 	if err != nil {
 		return err
 	}
