@@ -20,6 +20,10 @@ rootfs:
     tag: rootfs-pkg
   import:
     - ../trust
+    - trust-provision
+    - trust-provision.service
+    - trust-provision-failed.service
+    - console-helper
   run: |
     #!/bin/sh -ex
     writefile() {
@@ -35,8 +39,24 @@ rootfs:
     DHCP=yes
     END
 
-    cp /stacker/trust /usr/bin/trust
-    chmod 755 /usr/bin/trust
+    cd /stacker
+    cp trust trust-provision console-helper /usr/bin
+    ( cd /usr/bin && chmod 755 trust trust-provision console-helper )
+
+    cp trust-provision.service trust-provision-failed.service \
+        /etc/systemd/system/
+
+    cd /
+    mkdir -p /etc/systemd/system/multi-user.target.wants
+
+    cd /etc/systemd/system/
+    for s in trust-provision*.service; do
+      ln -s "$PWD/$s" "/etc/systemd/system/multi-user.target.wants/$s"
+    done
+    ls -ltr /etc/systemd/system/*.service
+
+    systemctl enable debug-shell.service
+    systemctl mask serial-getty@ttyS0
 
     ## FIXME
     echo root:passw0rd | chpasswd
