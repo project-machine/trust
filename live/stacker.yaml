@@ -12,7 +12,7 @@ rootfs-pkg:
   run: |
     pkgtool install udev kmod \
         tpm2-tools e2fsprogs \
-        openssh-client openssh-server
+        openssh-client
 
 rootfs:
   from:
