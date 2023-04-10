@@ -1,0 +1,127 @@
+#!/bin/bash
+
+# This script is long enough and a common enough operation that it
+# suggests we should have a mosb subcommand for this.
+
+export PATH=$PATH:.
+
+usage() {
+  echo "Example usage: --project=snakeoil:default --manifest=manifest.yaml --help"
+}
+
+short_opts="hp:m:"
+long_opts="help,project:,layer:"
+o=""
+LAYER=""
+project=snakeoil:default
+o=$(getopt --name "${0##*/}" --options "${short_opts}" \
+	--long "${long_opts}" -- "$@") && eval set -- "${o}" || { usage; exit 1; }
+while [ $# -ne 0 ]; do
+	cur="$1"
+	next="$2"
+	case "$cur" in
+		-h|--help) usage; exit 0;;
+		-p|--project) project="$next";;
+		-l|--layer) LAYER="$next";;
+		--) shift; break;;
+	esac
+	shift;
+done
+
+if [ -z "$LAYER" ]; then
+	echo "Using default layer: $LAYER, copying it locally if needed"
+	LAYER="oci:oci:rootfs-squashfs"
+fi
+
+echo "building project $project layer $LAYER"
+
+which mosb || {
+  echo "mosb is needed"
+  exit 1
+}
+choose_port() {
+  echo 59111 # TODO auto-select a free port
+}
+ZOT_PORT=$(choose_port)
+
+which zot || {
+  curl -Lo zot https://github.com/project-zot/zot/releases/download/v1.4.3/zot-linux-amd64-minimal
+  chmod 755 zot
+}
+
+mkdir -p zot-cache
+[ -f zot-config.json ] || cat > zot-config.json << EOF
+{
+  "distSpecVersion": "1.0.1-dev",
+  "storage": {
+    "rootDirectory": "$(pwd)/zot-cache",
+    "gc": false
+  },
+  "http": {
+    "address": "localhost",
+    "port": "$ZOT_PORT"
+  },
+  "log": {
+    "level": "error"
+  }
+}
+EOF
+zot serve ./zot-config.json &
+zot_pid=$!
+count=5
+up=0
+while [[ $count -gt 0 ]]; do
+  if [ ! -d /proc/$pid ]; then
+    echo "zot failed to start or died"
+    exit 1
+  fi
+  up=1
+  curl -f http://localhost:$ZOT_PORT/v2/ || up=0
+  if [ $up -eq 1 ]; then break; fi
+  sleep 1
+  count=$((count - 1))
+done
+if [ $up -eq 0 ]; then
+  echo "Timed out waiting for zot"
+  exit 1
+fi
+
+teardown() {
+  kill $zot_pid
+}
+trap teardown EXIT
+
+product_uuid() {
+  in="$1"
+  keyset="$(echo $in | cut -d : -f 1)"
+  p="$(echo $in | cut -d : -f 2)"
+  f="$HOME/.local/share/machine/trust/keys/${keyset}/manifest/${p}/uuid"
+  uuid=$(<$f)
+  echo $uuid
+}
+
+product=$(product_uuid $project)
+rm -f manifest.yaml
+cat > manifest.yaml << EOF
+version: 1
+product: "${product}"
+update_type: complete
+targets:
+  - service_name: livecd
+    source: "$LAYER"
+    version: 1.0.0
+    service_type: fs-only
+    nsgroup: "none"
+    network:
+      type: none
+EOF
+
+mosb --debug manifest publish \
+  --project $project \
+  --repo localhost:${ZOT_PORT} --name machine/livecd:1.0.0 \
+  manifest.yaml
+
+mosb --debug mkboot --cdrom \
+  snakeoil:default \
+  docker://localhost:${ZOT_PORT}/machine/livecd:1.0.0 \
+  livecd.iso
