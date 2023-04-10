@@ -1,5 +1,17 @@
 # Building live cd
 
+ * Create bootkit artifacts under .local/share/machine/trust/keys/$keyset - should
+   be done by 'trust keyset add'
+
+   ```
+   git clone https://github.com/hallyn/bootkit
+   cd bootkit
+   make build
+   umoci unpack --image ../build-bootkit/oci:bootkit \
+      ~/.local/share/machine/trust/keys/snakeoil/manifest/default/
+   ```
+   NOTE - we want to move that from the project into the keyset.
+
  * cd live
  * build the rootfs
  
@@ -9,31 +21,45 @@
 
    * Note: I  seem to be hitting a bug with this, where it fails to build the second time.
 
- * get privkey.pem and cert.pem and run 'build-media'
+ * Build a signed manifest pointing at your rfs
 
-   ```
-   keydir="/path/to/keys"
-   ./build-media \
-        --cert=$keydir/manifest/cert.pem  \
-        --key=$keydir/manifest/privkey.pem \
-        out.img \
-        docker://zothub.io/machine/bootkit/bootkit:0.0.5.230327-squashfs \
-        oci:./oci:rootfs-squashfs
     ```
+    ./build-livecd-rfs
+    ```
+    or if you're doing things more custom,
+    ```
+    trust keyset add mostest
+    trust project add mostest livecd
+    ./build-livecd-rfs --project=mostest:livecd \
+          --layer oci:oci:livecd-rootfs-squashfs
+    ````
+    The result will be a ./livecd.iso.  There will also be a complete
+    zot layout under ./zot-cache, if you want to snoop around.
 
  * boot the usb media. 
  
-   * atomix-vm-builder wants qcow2 format, so convert to qcow2
-   * build-media left 'ovmf-vars.fd' and 'ovmf-code.fd' in same dir as out.img
-
+   ```
+   machine init livecd << EOF
+    name: livecd
+    type: kvm
+    ephemeral: false
+    description: A fresh VM booting trust LiveCD in SecureBoot mode with TPM
+    config:
+      name: trust
+      uefi: true
+      uefi-vars: /home/serge/src/project-machine/trust/live/ovmf-vars.fd
+      cdrom: /home/serge/src/project-machine/trust/live/livecd.iso
+      boot: cdrom
+      tpm: true
+      gui: true
+      serial: true
+      tpm-version: 2.0
+      secure-boot: true
+      disks:
+          - file: /home/serge/src/project-machine/trust/live/livecd.qcow2
+            type: ssd
+            size: 20G
+   EOF
+   machine start livecd
+   machine gui livecd
     ```
-    rm -f out.qcow2 
-    qemu-img create -fqcow2 -b out.img -Fraw out.qcow2 
-    atomix-vm-builder run \
-       --usb-hdd-path=out.qcow2 \
-       --tpm --tpm-version=2.0 \
-       --secure-boot --uefi \
-       --uefi-vars=ovmf-vars.fd \
-       --uefi-code=ovmf-code.fd \
-       --num-hdd=0 --num-ssd=0 \
-       --kvmopts="-echr 0x05 -device VGA -vnc :9000"
