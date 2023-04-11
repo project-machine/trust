@@ -63,3 +63,43 @@
    machine start livecd
    machine gui livecd
     ```
+
+* Build a provisioning ISO
+
+  ```
+  $ stacker build -f provision-stacker.yaml --layer-type=squashfs
+  $ ./build-livecd-rfs --layer oci:oci:provision-rootfs-squashfs \
+     --output provision.iso
+  $ mkdir SUDI; cp ~/.local/share/machine/trust/keys/snakeoil/manifest/default/sudi/XXX/* SUDI/
+  $ truncate -s 20M sudi.vfat
+  $ mkfs.vfat -n trust-data sudi.vfat
+  $ mcopy -i sudi.vfat SUDI/cert.pem ::cert.pem
+  $ mcopy -i sudi.vfat SUDI/privkey.pem ::privkey.pem
+  $ cat > machine.yaml << EOF
+name: provision
+type: kvm
+ephemeral: false
+description: A fresh VM booting trust LiveCD in SecureBoot mode with TPM
+config:
+  name: provision
+  uefi: true
+  nics: []
+  uefi-vars: /home/serge/src/project-machine/trust/live/ovmf-vars.fd
+  cdrom: /home/serge/src/project-machine/trust/live/provision.iso
+  boot: cdrom
+  tpm: true
+  gui: true
+  serial: true
+  tpm-version: 2.0
+  secure-boot: true
+  disks:
+      - file: /home/serge/src/project-machine/trust/live/livecd.qcow2
+        type: ssd
+        size: 20G
+      - file: /home/serge/src/project-machine/trust/live/sudi.vfat
+        format: raw
+        type: hdd
+EOF
+  $ machine init < machine.yaml
+  $ machine run livecd
+  ```

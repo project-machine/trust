@@ -6,13 +6,15 @@
 export PATH=$PATH:.
 
 usage() {
-  echo "Example usage: --project=snakeoil:default --manifest=manifest.yaml --help"
+  echo "Example usage: --project=snakeoil:default --layer=oci:oci:provision-rootfs-squashfs --output provision.iso --help"
+  echo "               --project=snakeoil:default --layer=oci:oci:livecd-rootfs-squashfs --output livecd.iso --help"
 }
 
-short_opts="hp:m:"
-long_opts="help,project:,layer:"
+short_opts="hp:l:o:"
+long_opts="help,project:,layer:,output:"
 o=""
 LAYER=""
+OUTFILE="livecd.iso"
 project=snakeoil:default
 o=$(getopt --name "${0##*/}" --options "${short_opts}" \
 	--long "${long_opts}" -- "$@") && eval set -- "${o}" || { usage; exit 1; }
@@ -23,6 +25,7 @@ while [ $# -ne 0 ]; do
 		-h|--help) usage; exit 0;;
 		-p|--project) project="$next";;
 		-l|--layer) LAYER="$next";;
+		-o|--output) OUTFILE="$next";;
 		--) shift; break;;
 	esac
 	shift;
@@ -49,6 +52,7 @@ which zot || {
   chmod 755 zot
 }
 
+rm -rf zot-cache
 mkdir -p zot-cache
 [ -f zot-config.json ] || cat > zot-config.json << EOF
 {
@@ -124,4 +128,4 @@ mosb --debug manifest publish \
 mosb --debug mkboot --cdrom \
   snakeoil:default \
   docker://localhost:${ZOT_PORT}/machine/livecd:1.0.0 \
-  livecd.iso
+  ${OUTFILE}
