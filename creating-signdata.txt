@@ -1,0 +1,116 @@
+# Steps to create a showpcrs.iso
+
+## enter the keyset directory.  It should already have a bootkit/
+```
+cd .local/share/machine/trust/keys/snakeoil
+```
+
+## fetch the showpcrs binary
+```
+wget https://github.com/project-machine/showpcr/releases/download/v1.0.0/showpcrs.efi
+```
+
+## create the three signed showpcrs
+```
+sbsign --key uki-limited/privkey.pem --cert uki-limited/cert.pem \
+   --output bootkit/showpcrs-limited.efi bootkit/showpcrs.efi
+sbsign --key uki-production/privkey.pem --cert uki-production/cert.pem \
+   --output bootkit/showpcrs-production.efi bootkit/showpcrs.efi
+sbsign --key uki-tpm/privkey.pem --cert uki-tpm/cert.pem \
+   --output bootkit/showpcrs-tpm.efi bootkit/showpcrs.efi
+```
+
+## Create and populate an EFI directory
+```
+truncate -s 40M efi.vfat
+mkfs.vfat -v -F32 -s1 -n esp -S512 efi.vfat
+for base in showpcrs-tpm.efi showpcrs-production.efi showpcrs-limited.efi shim.efi; do
+	mcopy -i efi.vfat bootkit/$base ::$base
+done
+
+rm -rf ISO
+mkdir ISO
+mv efi.vfat ISO/
+```
+
+## Create the bootable ISO
+```
+xorriso -compliance iso_9660_level=3 \
+  -as mkisofs \
+  -eltorito-alt-boot -no-emul-boot -isohybrid-gpt-basdat \
+  -e efi.vfat \
+  -V showpcrs \
+  -o showpcrs.iso \
+  ISO
+```
+
+## Create a machine to boot with this ISO:
+```
+cat > showpcrs-vm.yaml << EOF
+name: showpcrs
+type: kvm
+ephemeral: false
+description: A VM for getting signdata info
+config:
+  name: showpcrs
+  uefi: true
+  nics: []
+  uefi-vars: /home/serge/.local/share/machine/trust/keys/snakeoil/bootkit/ovmf-vars.fd
+  cdrom: /home/serge/.local/share/machine/trust/keys/snakeoil/showpcrs.iso
+  boot: cdrom
+  disks: []
+  tpm: true
+  gui: true
+  serial: true
+  tpm-version: 2.0
+  secure-boot: true
+EOF
+machine init < showpcrs-vm.yaml
+```
+
+
+## Gather output
+
+Boot the VM three times.  Each time run a different showpcr.efi
+under the shim, and copy/paste the output into a file:
+
+```
+machine start showpcrs
+machine console showpcrs
+> fs0:
+> .\shim.efi .\showpcrs-limited.efi
+> reset -s
+# [ machine shuts down ]
+machine start showpcrs
+machine console showpcrs
+> fs0:
+> .\shim.efi .\showpcrs-production.efi
+> reset -s
+# [ machine shuts down ]
+machine start showpcrs
+machine console showpcrs
+> fs0:
+> .\shim.efi .\showpcrs-tpm.efi
+> reset -s
+```
+
+The output of each run will look like:
+
+```
+8A 03 88 B1 CC CD A7 27 65 41 E1 AE 19 9C 45 64 04 01 C3 55 C1 A2 68 EB 1D 98 DF 46 39 77 F7 1E
+```
+
+Put each into its own file
+
+Finally, you can use trust to create the signdata:
+```
+mkdir -p tpm-policy
+trust tpm-policy-gen \
+  --passwd-policy-file tpm-policy/passwd.policy \
+  --luks-policy-file tpm-policy/luks.policy \
+  --passwd-pcr7-file pcr7.passwd \
+  --luks-pcr7-file pcr7.luks \
+  --policy-version 1 \
+  --passwd-pubkey-file tpmpol-admin/cert.pem \
+  --luks-pubkey-file tpmpol-luks/cert.pem
+```
