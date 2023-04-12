@@ -66,11 +66,17 @@
 
 * Build a provisioning ISO
 
+Note that all of this is meant to be done automatically as you
+create a VM.  These manual steps are temporary.
+
   ```
   $ stacker build -f provision-stacker.yaml --layer-type=squashfs
   $ ./build-livecd-rfs --layer oci:oci:provision-rootfs-squashfs \
      --output provision.iso
-  $ mkdir SUDI; cp ~/.local/share/machine/trust/keys/snakeoil/manifest/default/sudi/XXX/* SUDI/
+  $ # If needed, create a SUDI keypair for the VM, for instance:
+  $ trust sudi add snakeoil default SN001
+  $ # Create a vfat file with the provisioning info
+  $ mkdir SUDI; cp ~/.local/share/machine/trust/keys/snakeoil/manifest/default/sudi/SN001/* SUDI/
   $ truncate -s 20M sudi.vfat
   $ mkfs.vfat -n trust-data sudi.vfat
   $ mcopy -i sudi.vfat SUDI/cert.pem ::cert.pem
