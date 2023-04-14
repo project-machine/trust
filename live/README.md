@@ -8,7 +8,7 @@
    cd bootkit
    make build
    umoci unpack --image ../build-bootkit/oci:bootkit \
-      ~/.local/share/machine/trust/keys/snakeoil/manifest/default/
+      ~/.local/share/machine/trust/keys/snakeoil/
    ```
    NOTE - we want to move that from the project into the keyset.
 
