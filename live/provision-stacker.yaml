@@ -1,8 +1,8 @@
 provision-base:
   build_only: true
   from:
-    type: docker
-    url: "docker://zothub.io/machine/bootkit/rootfs:0.0.5.230327-squashfs"
+    type: oci
+    url: /home/serge/src/project-machine/build-bootkit/oci:rootfs-squashfs
 
 provision-rootfs-pkg:
   build_only: true
