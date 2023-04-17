@@ -50,7 +50,7 @@ provision-rootfs:
 
     cd /etc/systemd/system/
     for s in trust-provision*.service; do
-      ln -s "$PWD/$s" "/etc/systemd/system/multi-user.target.wants/$s"
+      systemctl enable ${s}
     done
     ls -ltr /etc/systemd/system/*.service
 
