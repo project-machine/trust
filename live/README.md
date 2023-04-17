@@ -16,7 +16,8 @@
  * build the rootfs
  
     ```
-    stacker build --layer-type=squashfs
+    stacker build --layer-type=squashfs \
+      --substitute ROOTFS_VERSION=0.0.5.230327-squashfs
     ```
 
    * Note: I  seem to be hitting a bug with this, where it fails to build the second time.
@@ -70,7 +71,8 @@ Note that all of this is meant to be done automatically as you
 create a VM.  These manual steps are temporary.
 
   ```
-  $ stacker build -f provision-stacker.yaml --layer-type=squashfs
+  $ stacker build -f provision-stacker.yaml --layer-type=squashfs \
+      --substitute ROOTFS_VERSION=0.0.5.230327-squashfs
   $ ./build-livecd-rfs --layer oci:oci:provision-rootfs-squashfs \
      --output provision.iso
   $ # If needed, create a SUDI keypair for the VM, for instance:
