@@ -45,9 +45,6 @@ provision-rootfs:
     cp trust-provision.service trust-provision-failed.service \
         /etc/systemd/system/
 
-    cd /
-    mkdir -p /etc/systemd/system/multi-user.target.wants
-
     cd /etc/systemd/system/
     for s in trust-provision*.service; do
       systemctl enable ${s}

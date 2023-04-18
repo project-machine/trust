@@ -111,3 +111,18 @@ EOF
   $ machine init < machine.yaml
   $ machine run livecd
   ```
+
+* Build an install ISO
+
+  ```
+  $ export ZOT_VERSION=1.4.3
+  $ stacker build -f install-stacker.yaml --layer-type=squashfs \
+      --substitute ZOT_VERSION=1.4.3 \
+      --substitute ROOTFS_VERSION=0.0.5.230327-squashfs
+  $ ./build-livecd-rfs --layer oci:oci:install-rootfs-squashfs \
+     --output install.iso
+  ```
+
+  Edit the 'provision' vm to change provision.iso to install.iso.
+
+  Run the provision VM
