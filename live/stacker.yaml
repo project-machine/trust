@@ -40,3 +40,5 @@ rootfs:
 
     ## FIXME
     echo root:passw0rd | chpasswd
+
+    echo livecd > /mos-action
