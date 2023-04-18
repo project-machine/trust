@@ -126,6 +126,6 @@ mosb --debug manifest publish \
   manifest.yaml
 
 mosb --debug mkboot --cdrom \
-  snakeoil:default \
+  $project \
   docker://localhost:${ZOT_PORT}/machine/livecd:1.0.0 \
   ${OUTFILE}

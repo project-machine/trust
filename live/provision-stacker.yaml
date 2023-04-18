@@ -53,3 +53,4 @@ provision-rootfs:
 
     systemctl enable debug-shell.service
     systemctl mask serial-getty@ttyS0
+    echo provision > /mos-action
