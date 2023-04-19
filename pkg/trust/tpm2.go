@@ -782,8 +782,6 @@ func (t *tpm2V3Context) PreInstall() error {
 		return fmt.Errorf("Key unlink failed: %w", err)
 	}
 
-	// TODO - do we need to also copy the manifestCA.pem out of initrd?
-
 	return nil
 }
 
