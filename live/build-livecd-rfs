@@ -104,6 +104,8 @@ product_uuid() {
   echo $uuid
 }
 
+BOOTKIT_URL="${BOOTKIT_URL:-docker://zothub.io/machine/bootkit/rootfs:$ROOTFS_VERSION}"
+
 product=$(product_uuid $project)
 rm -f manifest.yaml
 cat > manifest.yaml << EOF
@@ -113,6 +115,13 @@ update_type: complete
 targets:
   - service_name: livecd
     source: "$LAYER"
+    version: 1.0.0
+    service_type: fs-only
+    nsgroup: "none"
+    network:
+      type: none
+  - service_name: bootkit
+    source: "$BOOTKIT_URL"
     version: 1.0.0
     service_type: fs-only
     nsgroup: "none"
