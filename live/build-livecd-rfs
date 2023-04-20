@@ -8,12 +8,14 @@ export PATH=$PATH:.
 usage() {
   echo "Example usage: --project=snakeoil:default --layer=oci:oci:provision-rootfs-squashfs --output provision.iso --help"
   echo "               --project=snakeoil:default --layer=oci:oci:livecd-rootfs-squashfs --output livecd.iso --help"
+  echo "   For an install cd, specify the target layer, e.g. --tlayer=oci:target-rootfs-squashfs"
 }
 
-short_opts="hp:l:o:"
-long_opts="help,project:,layer:,output:"
+short_opts="hp:l:t:o:"
+long_opts="help,project:,layer:,tlayer:,output:"
 o=""
 LAYER=""
+TLAYER=""
 OUTFILE="livecd.iso"
 project=snakeoil:default
 o=$(getopt --name "${0##*/}" --options "${short_opts}" \
@@ -25,6 +27,7 @@ while [ $# -ne 0 ]; do
 		-h|--help) usage; exit 0;;
 		-p|--project) project="$next";;
 		-l|--layer) LAYER="$next";;
+		-t|--tlayer) TLAYER="$next";;
 		-o|--output) OUTFILE="$next";;
 		--) shift; break;;
 	esac
@@ -128,6 +131,17 @@ targets:
     network:
       type: none
 EOF
+if [ -n "$TLAYER" ]; then
+cat >> manifest.yaml << EOF
+  - service_name: hostfs
+    source: "$TLAYER"
+    version: 1.0.0
+    service_type: hostfs
+    nsgroup: "none"
+    network:
+      type: none
+EOF
+fi
 
 mosb --debug manifest publish \
   --project $project \

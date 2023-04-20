@@ -120,7 +120,7 @@ EOF
       --substitute ZOT_VERSION=1.4.3 \
       --substitute ROOTFS_VERSION=0.0.5.230327-squashfs
   $ ./build-livecd-rfs --layer oci:oci:install-rootfs-squashfs \
-     --output install.iso
+     --output install.iso --tlayer oci:oci:target-rootfs-squashfs
   ```
 
   Edit the 'provision' vm to change provision.iso to install.iso.

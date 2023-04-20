@@ -43,4 +43,5 @@ systemctl start zot.service
 systemctl start udev
 
 #mosctl --debug install --partition docker://127.0.0.1:5000/machine/install:1.0.0
+modprobe dmverity
 mosctl --debug install --partition docker://127.0.0.1:5000/machine/livecd:1.0.0
