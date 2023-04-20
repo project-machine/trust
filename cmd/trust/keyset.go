@@ -5,15 +5,48 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/apex/log"
 	"github.com/go-git/go-git/v5"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
+	tree "github.com/project-machine/trust/pkg/printdirtree"
 	"github.com/project-machine/trust/pkg/trust"
 	"github.com/urfave/cli"
 )
+
+var KeysetKeyDirs = []string{
+	"manifest",
+	"manifest-ca",
+	"pcr7data",
+	"sudi-ca",
+	"tpmpol-admin",
+	"tpmpol-luks",
+	"uefi-db",
+	"uefi-kek",
+	"uefi-pk",
+	"uki-limited",
+	"uki-production",
+	"uki-tpm",
+}
+
+const (
+	middleSym = "├──"
+	columnSym = "│"
+	lastSym   = "└──"
+	firstSym  = middleSym
+)
+
+func isValidKeyDir(keydir string) bool {
+	for _, dir := range KeysetKeyDirs {
+		if dir == keydir {
+			return true
+		}
+	}
+	return false
+}
 
 func generateMosCreds(keysetPath string, ctemplate *x509.Certificate) error {
 	type AddCertInfo struct {
@@ -40,13 +73,12 @@ func generateMosCreds(keysetPath string, ctemplate *x509.Certificate) error {
 }
 
 func makeKeydirs(keysetPath string) error {
-	keyDirs := []string{"manifest-ca", "manifest", "sudi-ca", "tpmpol-admin", "tpmpol-luks", "uefi-db", "uki-limited", "uki-production", "uki-tpm", "uefi-pk", "uefi-kek"}
 	err := os.MkdirAll(keysetPath, 0750)
 	if err != nil {
 		return err
 	}
 
-	for _, dir := range keyDirs {
+	for _, dir := range KeysetKeyDirs {
 		err = os.Mkdir(filepath.Join(keysetPath, dir), 0750)
 		if err != nil {
 			return err
@@ -191,6 +223,22 @@ var keysetCmd = cli.Command{
 				},
 			},
 		},
+		cli.Command{
+			Name:      "show",
+			Action:    doShowKeyset,
+			Usage:     "show keyset key values or paths",
+			ArgsUsage: "<keyset-name> <key> [<item>]",
+			Flags: []cli.Flag{
+				cli.BoolFlag{
+					Name:  "path",
+					Usage: "Show path only to keyset key item",
+				},
+				cli.BoolFlag{
+					Name:  "value",
+					Usage: "Show value only of keyset key item",
+				},
+			},
+		},
 	},
 }
 
@@ -242,13 +290,112 @@ func doListKeysets(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	dirs,  err := os.ReadDir(moskeysetPath)
+	dirs, err := os.ReadDir(moskeysetPath)
 	if err != nil {
 		return fmt.Errorf("Failed reading keys directory %q: %w", moskeysetPath, err)
 	}
 
 	for _, keyname := range dirs {
 		fmt.Printf("%s\n", keyname.Name())
+	}
+
+	return nil
+}
+
+func doShowKeyset(ctx *cli.Context) error {
+	if len(ctx.Args()) == 0 {
+		return fmt.Errorf("Please specify keyset name. Select from 'trust keyset list'")
+	}
+
+	keysetName := ctx.Args()[0]
+	if keysetName == "" {
+		return fmt.Errorf("Please specify keyset name. Select from 'trust keyset list'")
+	}
+
+	moskeysetPath, err := getMosKeyPath()
+	if err != nil {
+		return err
+	}
+
+	keysetPath := filepath.Join(moskeysetPath, keysetName)
+	if !PathExists(keysetPath) {
+		return fmt.Errorf("Unknown keyset '%s', cannot find keyset at path: %q", keysetName, keysetPath)
+	}
+
+	// no keyset key name specified only, print path if --path, otherwise list all key dir names
+	if len(ctx.Args()) < 2 {
+		if ctx.Bool("path") {
+			fmt.Printf("%s\n", keysetPath)
+			for _, keyDir := range KeysetKeyDirs {
+				keyPath := filepath.Join(keysetPath, keyDir)
+				fmt.Printf("%s\n", keyPath)
+			}
+		} else {
+
+			if err := tree.PrintDirs(keysetPath, KeysetKeyDirs); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	keyName := ctx.Args()[1]
+	if keyName == "" {
+		return fmt.Errorf("Please specify keyset key name, must be one of: %s", strings.Join(KeysetKeyDirs, ", "))
+	}
+
+	if !isValidKeyDir(keyName) {
+		return fmt.Errorf("Invalid keyset key name '%s':, must be one of: %s", strings.Join(KeysetKeyDirs, ", "))
+	}
+
+	keyPath := filepath.Join(keysetPath, keyName)
+	if !PathExists(keyPath) {
+		return fmt.Errorf("Keyset %s key %q does not exist at %q", keysetName, keyName, keyPath)
+	}
+
+	if len(ctx.Args()) > 2 {
+		item := ctx.Args()[2]
+		fullPath := filepath.Join(keyPath, item)
+		if !PathExists(fullPath) {
+			return fmt.Errorf("Failed reading keyset %s key %s item %s at %q: %w", keysetName, keyName, item, fullPath, err)
+		}
+
+		contents, err := os.ReadFile(fullPath)
+		if err != nil {
+			return fmt.Errorf("Failed reading keyset %s key %s item %s at %q: %w", keysetName, keyName, item, fullPath, err)
+		}
+		if ctx.Bool("path") {
+			fmt.Println(fullPath)
+		} else if ctx.Bool("value") {
+			fmt.Printf("%s", string(contents))
+		} else {
+			fmt.Printf("%s\n%s\n", fullPath, string(contents))
+		}
+		return nil
+	}
+
+	// no item specified, crawl dir and print contents or path
+	keyFiles, err := os.ReadDir(keyPath)
+	if err != nil {
+		return fmt.Errorf("keyset %s key %s directory %q: %w", keysetName, keyName, keyPath, err)
+	}
+
+	printPath := ctx.Bool("path")
+	for _, dEntry := range keyFiles {
+		if dEntry.IsDir() {
+			continue
+		}
+		keyFile := dEntry.Name()
+		fullPath := filepath.Join(keyPath, keyFile)
+		contents, err := os.ReadFile(fullPath)
+		if err != nil {
+			return fmt.Errorf("Failed reading keyset %s key %s item %s at %q: %w", keysetName, keyName, keyFile, fullPath, err)
+		}
+		if printPath {
+			fmt.Println(fullPath)
+		} else {
+			fmt.Printf("%s\n%s\n", fullPath, string(contents))
+		}
 	}
 
 	return nil

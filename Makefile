@@ -1,6 +1,6 @@
 all: trust
 
-trust: cmd/trust/*.go pkg/trust/*.go
+trust: cmd/trust/*.go pkg/trust/*.go pkg/printdirtree/*.go
 	go build -o trust ./cmd/trust/
 
 clean:
