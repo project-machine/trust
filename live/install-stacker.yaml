@@ -21,6 +21,36 @@ install-rootfs-pkg:
         tpm2-tools \
         udev
 
+# The rootfs which we want to run on the system
+target-rootfs:
+  from:
+    type: built
+    tag: install-rootfs-pkg
+  import:
+    - mosctl
+    - console-helper
+  run: |
+    #!/bin/sh -ex
+    writefile() {
+      mkdir -p "${1%/*}"
+      echo "write $1" 1>&2
+      cat >"$1"
+    }
+
+    writefile /etc/systemd/network/20-wire-enp0s-dhcp.network <<"END"
+    [Match]
+    Name=enp0s*
+    [Network]
+    DHCP=yes
+    END
+
+    cd /stacker
+    cp mosctl console-helper /usr/bin
+    ( cd /usr/bin && chmod 755 mosctl console-helper )
+
+    systemctl enable debug-shell.service
+    systemctl mask serial-getty@ttyS0
+
 install-rootfs:
   from:
     type: built
