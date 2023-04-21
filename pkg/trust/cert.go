@@ -8,6 +8,10 @@ import (
 	"encoding/pem"
 	"fmt"
 	"os"
+
+	"github.com/foxboron/go-uefi/efi/pecoff"
+	"github.com/foxboron/go-uefi/efi/util"
+	"github.com/foxboron/go-uefi/efi/pkcs7"
 )
 
 // VerifyCert checks that the product cert was signed by the
@@ -131,4 +135,68 @@ func Sign(sourcePath, signedPath, keyPath string) error {
 	}
 
 	return nil
+}
+
+// SignEFI signs an efi binary
+// Sign the contents of @sourcePath using the key at @keyPath and
+// the cert at @certPath storing the result in the file
+// called @signedPath
+func SignEFI(sourcePath, signedPath, keyPath, certPath string) error {
+	// Get the key to use for signing
+	privkey, err := util.ReadKeyFromFile(keyPath)
+	if err != nil {
+		return fmt.Errorf("Failed reading (%q): %w", keyPath,  err)
+	}
+	cert, err := util.ReadCertFromFile(certPath)
+	if err != nil {
+		return fmt.Errorf("Failed reading (%q): %w", certPath, err)
+	}
+
+	peFile, err := os.ReadFile(sourcePath)
+	if err != nil {
+		return fmt.Errorf("Failed reading (%q): %w", sourcePath, err)
+	}
+	ctx := pecoff.PECOFFChecksum(peFile)
+	sig, err := pecoff.CreateSignature(ctx, cert, privkey)
+	if err != nil {
+		return fmt.Errorf("Failed creating signature: %w", err)
+	}
+	binary, err := pecoff.AppendToBinary(ctx, sig)
+	if err != nil {
+		return fmt.Errorf("Failed appending signature: %w", err)
+	}
+	os.WriteFile(signedPath, binary, 0640)
+	if err != nil {
+		return fmt.Errorf("Failed writing signature to (%q): %w", signedPath, err)
+	}
+
+	return nil
+}
+
+// Verfiy signature of an efi binary
+// Verify the signature on the efi binary at signedPath with
+// the cert at certPath
+func VerifyEFI(certPath, signedPath string) (bool, error) {
+	peFile, err := os.ReadFile(signedPath)
+	if err != nil {
+		return false, fmt.Errorf("Failed reading (%q): %w", signedPath, err)
+	}
+	cert, err := util.ReadCertFromFile(certPath)
+	if err != nil {
+		return false, fmt.Errorf("Failed reading (%q): %w", certPath, err)
+	}
+	sigs, err := pecoff.GetSignatures(peFile)
+	if err != nil {
+		return false, fmt.Errorf("Failed to get signature(s) from %q: %w", signedPath, err)
+	}
+	if len(sigs) == 0 {
+		return false, fmt.Errorf("No signatures in %q", signedPath)
+	}
+	for _, signature := range sigs {
+		verified, _ := pkcs7.VerifySignature(cert, signature.Certificate)
+		if verified {
+			return true, nil
+		}
+	}
+	return false, nil
 }
