@@ -35,6 +35,13 @@ func main() {
 
 		// sudo
 		sudiCmd,
+
+		// sign
+		signCmd,
+
+		// verify
+		verifyCmd,
+
 	}
 	app.Flags = []cli.Flag{
 		cli.BoolFlag{
