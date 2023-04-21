@@ -1,58 +1,78 @@
 package trust
 
 import (
-	"fmt"
+	"path/filepath"
+
+	"github.com/pkg/errors"
 	"github.com/urfave/cli"
 	"os"
-
-	tpm2 "github.com/canonical/go-tpm2"
-	tutil "github.com/canonical/go-tpm2/util"
 )
 
+// genLuksPolicy creates a policy for reading the LUKS password
+// while booted under a production key.
 func genLuksPolicy(ctx *cli.Context) error {
-	pv := ctx.Int("policy-version")
-	if pv < 1 || pv > int(PolicyVersion) {
-		return fmt.Errorf("Bad policy version")
-	}
-
-	pol := tutil.ComputeAuthPolicy(tpm2.HashAlgorithmSHA256)
-
-	luksPcr7, err := os.ReadFile(ctx.String("luks-pcr7-file"))
+	workd, err := os.MkdirTemp("", "lukspol")
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "Error creating tempdir")
 	}
-	pol.PolicyPCR(luksPcr7, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7}}})
+	defer os.RemoveAll(workd)
 
-	nvV := tpm2.Operand(EAPolicyVersion(TPM2IndexOSKey).String())
-	eaVIndex := &tpm2.NVPublic{
-		Index:   tpm2.Handle(TPM2IndexEAVersion),
-		NameAlg: tpm2.HashAlgorithmSHA256,
-		Attrs:   tpm2.NVTypeOrdinary.WithAttrs(tpm2.AttrNVAuthRead|tpm2.AttrNVOwnerWrite|tpm2.AttrNVOwnerRead),
-		Size:    4,
+	sessName := filepath.Join(workd, "tpm_session_b")
+
+	if err := RunCommand("tpm2_startauthsession", "-S", sessName); err != nil {
+		return errors.Wrapf(err, "Failed creating auth session");
 	}
-	eaVName, err := eaVIndex.Name()
-	if err != nil {
-		return err
+	defer RunCommand("tpm2_flushcontext", sessName)
+
+	cmd := []string{
+		"tpm2_policypcr",
+		"-S", sessName,
+		"-l", "sha256:7",
+		"-f", ctx.String("passwd-pcr7-file"),
 	}
-	pol.PolicyNV(eaVName, nvV, uint16(0), tpm2.OpEq)
+	if err := RunCommand(cmd...); err != nil {
+		return errors.Wrapf(err, "Failed running policypcr")
+	}
 
-	digest := pol.GetDigest()
+	cmd = []string{
+		"tpm2_policynv", "-i-",
+		 "-S", sessName,
+		 TPM2IndexEAVersion.String(), "eq",
+		 "-L", ctx.String("luks-policy-file"),
+	}
+	if err := runWithStdin(PolicyVersion.String(), cmd...); err != nil {
+		return errors.Wrapf(err, "Failed running policynv")
+	}
 
-	return os.WriteFile(ctx.String("luks-policy-file"), digest, 0600)
+	return nil
 }
 
 func genPasswdPolicy(ctx *cli.Context) error {
-	pol := tutil.ComputeAuthPolicy(tpm2.HashAlgorithmSHA256)
-
-	passwdPcr7, err := os.ReadFile(ctx.String("passwd-pcr7-file"))
+	workd, err := os.MkdirTemp("", "passpol")
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "Error creating tempdir")
 	}
-	pol.PolicyPCR(passwdPcr7, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7}}})
+	defer os.RemoveAll(workd)
 
-	digest := pol.GetDigest()
+	sessName := filepath.Join(workd, "tpm_session_a")
 
-	return os.WriteFile(ctx.String("passwd-policy-file"), digest, 0600)
+	if err := RunCommand("tpm2_startauthsession", "-S", sessName); err != nil {
+		return errors.Wrapf(err, "Failed creating auth session");
+	}
+	defer RunCommand("tpm2_flushcontext", sessName)
+
+	cmd := []string{
+		"tpm2_policypcr",
+		"-S", sessName,
+		"-l", "sha256:7",
+		"-f", ctx.String("passwd-pcr7-file"),
+		"-L", ctx.String("passwd-policy-file"),
+	}
+	if err := RunCommand(cmd...); err != nil {
+		return errors.Wrapf(err, "Failed running policypcr")
+	}
+
+	return nil
 }
 
 func TpmGenPolicy(ctx *cli.Context) error {

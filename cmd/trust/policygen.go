@@ -26,8 +26,8 @@ var tpmPolicyGenCmd = cli.Command{
 			Value: "passwd_pcr7.bin",
 		},
 		cli.StringFlag{
-			Name:  "lp,luks-pcr7-file",
-			Usage: "File from which to read luks pcr7",
+			Name:  "lp,production-pcr7-file,luks-pcr7-file",
+			Usage: "File from which to read production pcr7",
 			Value: "luks_pcr7.bin",
 		},
 		cli.IntFlag{
