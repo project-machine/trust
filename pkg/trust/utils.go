@@ -11,6 +11,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/pkg/errors"
 	"github.com/plus3it/gorecurcopy"
 )
 
@@ -158,7 +159,15 @@ func Run(args ...string) (string, error) {
 	cmd := exec.Command(args[0], args[1:]...)
         output, err := cmd.CombinedOutput()
         if err != nil {
-                return string(output), fmt.Errorf("Failed running %v: %w", args, err)
+                return string(output), errors.Wrapf(err, "Failed running %v", args)
         }
         return string(output), nil
+}
+
+func RunCommand(args ...string) error {
+	_, err := Run(args...)
+	if err != nil {
+		return err
+	}
+	return nil
 }
