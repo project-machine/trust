@@ -65,7 +65,7 @@ mkdir -p zot-cache
     "gc": false
   },
   "http": {
-    "address": "localhost",
+    "address": "127.0.0.1",
     "port": "$ZOT_PORT"
   },
   "log": {
@@ -83,7 +83,7 @@ while [[ $count -gt 0 ]]; do
     exit 1
   fi
   up=1
-  curl -f http://localhost:$ZOT_PORT/v2/ || up=0
+  curl -f http://127.0.0.1:$ZOT_PORT/v2/ || up=0
   if [ $up -eq 1 ]; then break; fi
   sleep 1
   count=$((count - 1))
@@ -145,10 +145,10 @@ fi
 
 mosb --debug manifest publish \
   --project $project \
-  --repo localhost:${ZOT_PORT} --name machine/livecd:1.0.0 \
+  --repo 127.0.0.1:${ZOT_PORT} --name machine/livecd:1.0.0 \
   manifest.yaml
 
 mosb --debug mkboot --cdrom \
   $project \
-  docker://localhost:${ZOT_PORT}/machine/livecd:1.0.0 \
+  docker://127.0.0.1:${ZOT_PORT}/machine/livecd:1.0.0 \
   ${OUTFILE}
