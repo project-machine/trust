@@ -29,6 +29,8 @@ const (
 	TrialSession              = true
 )
 
+const RootfsPCRFile = "/pcr7.bin"
+
 func readHostPcr7() ([]byte, error) {
 	f, err := ioutil.TempFile("/tmp", "pcr")
 	if err != nil {
@@ -48,7 +50,13 @@ func readHostPcr7() ([]byte, error) {
 }
 
 func curPcr7() (string, error) {
-	c, err := readHostPcr7()
+	var c []byte
+	var err error
+	if PathExists(RootfsPCRFile) {
+		c, err = ioutil.ReadFile(RootfsPCRFile)
+	} else {
+		c, err = readHostPcr7()
+	}
 	if err != nil {
 		return "", fmt.Errorf("Error reading host pcr7: %w", err)
 	}
