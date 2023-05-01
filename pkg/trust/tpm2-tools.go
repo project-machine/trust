@@ -131,7 +131,7 @@ func Tpm2NVIndexLength(nvindex NVIndex) (int, error) {
 
 	return size, nil
 }
-func (c *tpm2V3Context) Tpm2CreatePrimary() (error) {
+func (c *tpm2V3Context) Tpm2CreatePrimary() error {
 	log.Debugf("Tpm2CreatePrimary")
 	if c.Keyctx != "" {
 		log.Debugf("Tpm2CreatePrimary: a primary context already exists (%s), reusing it", c.Keyctx)
@@ -142,9 +142,9 @@ func (c *tpm2V3Context) Tpm2CreatePrimary() (error) {
 	fname := f.Name()
 	f.Close()
 
-	cmd := []string{"tpm2_createprimary", "--key-context="+fname}
+	cmd := []string{"tpm2_createprimary", "--key-context=" + fname}
 	if c.adminPwd != "" { // provisioning
-		cmd = append(cmd, optHierarchyOwner, "--hierarchy-auth=" + c.adminPwd)
+		cmd = append(cmd, optHierarchyOwner, "--hierarchy-auth="+c.adminPwd)
 	} else {
 		// reading
 		cmd = append(cmd, optHierarchyNone)
@@ -183,7 +183,6 @@ func (c *tpm2V3Context) Tpm2StartSession(isTrial TrialPolicy) error {
 
 	return run(cmd...)
 }
-
 
 func (c *tpm2V3Context) Tpm2PolicyPCR(pcrs string) error {
 	return run("tpm2_policypcr", "--session="+c.sessionFile, "--pcr-list="+pcrs)
@@ -303,6 +302,7 @@ func Tpm2Clear() error {
 	}
 	return nil
 }
+
 // Write a value which is publically readable but only writeable with tpm admin pass
 func (c *tpm2V3Context) StorePublic(idx NVIndex, value string) error {
 	attributes := "ownerwrite|ownerread|authread"
