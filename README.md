@@ -47,6 +47,14 @@ Trust also offers the following subcommands for administration:
    generated certificates. The key repo may be used whereever a
    keysetname is required.
 
+	'trust keyset pcr7data keysetName --passwdPolicy <pathname> \
+									  --luksPolicy <pathname> \
+									  --pcr7-tpm <pathname> \
+									  --pcr7-prod <pathname> \
+									  --pcr7-limited <pathname>
+	Adds the specified data to the named keyset. This generates
+	the "pcr7data" directory in the keyset.
+
 Exported functions in trust:
 
    doSudiCert(VMname, keysetname string) - Generates a unique uuid,

@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"math/big"
@@ -70,6 +71,19 @@ func getMosKeyPath() (string, error) {
 		return "", err
 	}
 	return filepath.Join(dataDir, "machine", "trust", "keys"), nil
+}
+
+func KeysetExists(keysetname string) bool {
+    mosKeyPath, err := getMosKeyPath()
+    if err != nil {
+        return false
+    }
+    keysetPath := filepath.Join(mosKeyPath, keysetname)
+    if PathExists(keysetPath) {
+        return true
+    } else {
+        return false
+    }
 }
 
 // SignCert creates a CA signed certificate and keypair in destdir
@@ -404,4 +418,54 @@ func generateCreds(destdir string, doguid bool, template *x509.Certificate) erro
 	}
 
 	return nil
+}
+
+func createPCR7Index(pcr7file string) (string, error) {
+	c, err := os.ReadFile(pcr7file)
+	if err != nil {
+		return "", err
+	}
+	for start := 0; start+1 < len(c); start += 2 {
+		tmp := c[start]
+		c[start] = c[start+1]
+		c[start+1] = tmp
+	}
+	encodedStr := hex.EncodeToString(c)
+	return encodedStr, nil
+}
+
+func extractPubkey(certPath string) (*rsa.PublicKey, error) {
+	certPEM, err := os.ReadFile(certPath)
+	if err != nil {
+		return nil, err
+	}
+	block, _ := pem.Decode([]byte(certPEM))
+	if block == nil {
+		return nil, fmt.Errorf("Failed to decode the certificate (%q)", certPath)
+	}
+	parsedCert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return nil, err
+	}
+	return parsedCert.PublicKey.(*rsa.PublicKey), nil
+}
+
+func savePubkeytoFile(pubkey *rsa.PublicKey, outPath string) error {
+    pubkeyPem, err := os.Create(outPath)
+    if err != nil {
+        return err
+    }
+    pkix, err := x509.MarshalPKIXPublicKey(pubkey)
+    if err != nil {
+        return err
+    }
+    err = pem.Encode(pubkeyPem, &pem.Block{Type: "PUBLIC KEY", Bytes: pkix})
+    if err != nil {
+        return err
+    }
+    err = os.Chmod(outPath, 0644)
+    if err != nil {
+        return err
+    }
+    return nil
 }
