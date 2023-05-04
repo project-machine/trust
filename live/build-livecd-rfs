@@ -62,8 +62,9 @@ which zot || {
 }
 
 rm -rf zot-cache
+rm -f zot-config.json
 mkdir -p zot-cache
-[ -f zot-config.json ] || cat > zot-config.json << EOF
+cat > zot-config.json << EOF
 {
   "distSpecVersion": "1.0.1-dev",
   "storage": {
@@ -113,7 +114,8 @@ product_uuid() {
   echo $uuid
 }
 
-BOOTKIT_URL="${BOOTKIT_URL:-docker://zothub.io/machine/bootkit/rootfs:$ROOTFS_VERSION}"
+ROOTFS_VERSION=${ROOTFS_VERSION:-0.0.5.230327-squashfs}
+BOOTKIT_URL="${BOOTKIT_URL:-docker://zothub.io/machine/bootkit/bootkit:$ROOTFS_VERSION}"
 
 product=$(product_uuid $project)
 rm -f manifest.yaml
@@ -155,6 +157,7 @@ mosb --debug manifest publish \
   manifest.yaml
 
 mosb --debug mkboot --cdrom \
+  --cmdline="console=ttyS0" \
   $project \
   docker://127.0.0.1:${ZOT_PORT}/machine/livecd:1.0.0 \
   ${OUTFILE}

@@ -18,7 +18,7 @@ provision-rootfs:
     type: built
     tag: provision-rootfs-pkg
   import:
-    - https://github.com/project-machine/mos/releases/download/0.0.9/mosctl
+    - https://github.com/project-machine/mos/releases/download/0.0.11/mosctl
     - trust-provision
     - trust-provision.service
     - trust-provision-failed.service

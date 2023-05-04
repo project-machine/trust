@@ -9,6 +9,7 @@ OnFailure=install-provision-failed.service
 Type=oneshot
 RemainAfterExit=true
 ExecStart=/usr/bin/mos-install
+ExecStartPost=/usr/bin/systemctl poweroff
 StandardOutput=journal+console
 
 [Install]

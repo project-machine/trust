@@ -40,6 +40,8 @@
  * boot the usb media. 
  
    ```
+   TOPDIR=$(git rev-parse --show-toplevel)
+   [ -f ${TOPDIR}/live/livecd.qcow2 ] || qemu-img create -f qcow2 ${TOPDIR}/live/livecd.qcow2 120G
    machine init livecd << EOF
     name: livecd
     type: kvm
@@ -48,8 +50,8 @@
     config:
       name: trust
       uefi: true
-      uefi-vars: /home/serge/src/project-machine/trust/live/ovmf-vars.fd
-      cdrom: /home/serge/src/project-machine/trust/live/livecd.iso
+      uefi-vars: ~/.local/share/machine/trust/keys/snakeoil/bootkit/ovmf-vars.fd
+      cdrom: $TOPDIR/live/livecd.iso
       boot: cdrom
       tpm: true
       gui: true
@@ -57,9 +59,9 @@
       tpm-version: 2.0
       secure-boot: true
       disks:
-          - file: /home/serge/src/project-machine/trust/live/livecd.qcow2
+          - file: $TOPDIR/live/livecd.qcow2
             type: ssd
-            size: 20G
+            size: 120G
    EOF
    machine start livecd
    machine gui livecd
@@ -83,6 +85,8 @@ create a VM.  These manual steps are temporary.
   $ mkfs.vfat -n trust-data sudi.vfat
   $ mcopy -i sudi.vfat SUDI/cert.pem ::cert.pem
   $ mcopy -i sudi.vfat SUDI/privkey.pem ::privkey.pem
+  $ TOPDIR=$(git rev-parse --show-toplevel)
+  $ [ -f ${TOPDIR}/live/livecd.qcow2 ] || qemu-img create -f qcow2 ${TOPDIR}/live/livecd.qcow2 120G
   $ cat > machine.yaml << EOF
 name: provision
 type: kvm
@@ -91,9 +95,16 @@ description: A fresh VM booting trust LiveCD in SecureBoot mode with TPM
 config:
   name: provision
   uefi: true
-  nics: []
-  uefi-vars: /home/serge/src/project-machine/trust/live/ovmf-vars.fd
-  cdrom: /home/serge/src/project-machine/trust/live/provision.iso
+  nics:
+    - protocol: tcp
+      host:
+        address: ""
+        port: 59999
+      guest:
+        address: ""
+        port: 9999
+  uefi-vars: ~/.local/share/machine/trust/keys/snakeoil/bootkit/ovmf-vars.fd
+  cdrom: $TOPDIR/live/provision.iso
   boot: cdrom
   tpm: true
   gui: true
@@ -101,10 +112,10 @@ config:
   tpm-version: 2.0
   secure-boot: true
   disks:
-      - file: /home/serge/src/project-machine/trust/live/livecd.qcow2
+      - file: $TOPDIR/live/livecd.qcow2
         type: ssd
-        size: 20G
-      - file: /home/serge/src/project-machine/trust/live/sudi.vfat
+        size: 120G
+      - file: $TOPDIR/live/sudi.vfat
         format: raw
         type: hdd
 EOF

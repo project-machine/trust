@@ -9,6 +9,7 @@ OnFailure=trust-provision-failed.service
 Type=oneshot
 RemainAfterExit=true
 ExecStart=/usr/bin/trust-provision
+ExecStartPost=/usr/bin/systemctl poweroff
 StandardOutput=journal+console
 
 [Install]

@@ -11,13 +11,18 @@ install-rootfs-pkg:
     tag: install-base
   run: |
     pkgtool install \
+        curl \
         cryptsetup \
         dosfstools \
         e2fsprogs \
+        efibootmgr \
+        iproute2 \
         keyutils \
         kmod \
         libsquashfs-dev \
+        mtools \
         parted \
+        strace \
         tpm2-tools \
         udev
 
@@ -27,8 +32,10 @@ target-rootfs:
     type: built
     tag: install-rootfs-pkg
   import:
-    - mosctl
+    - https://github.com/project-machine/mos/releases/download/0.0.11/mosctl
     - console-helper
+    - assertd
+    - assertd.service
   run: |
     #!/bin/sh -ex
     writefile() {
@@ -48,15 +55,21 @@ target-rootfs:
     cp mosctl console-helper /usr/bin
     ( cd /usr/bin && chmod 755 mosctl console-helper )
 
+    echo root:passw0rd | chpasswd
     systemctl enable debug-shell.service
-    systemctl mask serial-getty@ttyS0
+    systemctl enable serial-getty@ttyS0
+    cp /stacker/assertd /usr/bin
+    chmod 755 /usr/bin/assertd
+
+    cp /stacker/assertd.service /etc/systemd/system/
+    systemctl enable assertd.service
 
 install-rootfs:
   from:
     type: built
     tag: install-rootfs-pkg
   import:
-    - mosctl
+    - https://github.com/project-machine/mos/releases/download/0.0.11/mosctl
     - https://github.com/project-zot/zot/releases/download/v${{ZOT_VERSION}}/zot-linux-amd64-minimal
     - mos-install
     - mos-install.service

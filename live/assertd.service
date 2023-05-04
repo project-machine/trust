@@ -1,0 +1,11 @@
+[Unit]
+Description=Run SUDI assertion daemon
+After=getty.target multi-user.target local-fs.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/assertd
+StandardOutput=journal+console
+
+[Install]
+WantedBy=multi-user.target
