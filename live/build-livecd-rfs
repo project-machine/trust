@@ -46,7 +46,13 @@ which mosb || {
   exit 1
 }
 choose_port() {
-  echo 59111 # TODO auto-select a free port
+	HOST_IP=127.0.0.1
+	HOST_BASE=59000
+	HOST_PORT=$HOST_BASE
+	while nc -z "$HOST_IP" "$HOST_PORT"; do
+	    HOST_PORT=$((HOST_BASE + (RANDOM % 1000)))
+	done
+	echo $HOST_PORT
 }
 ZOT_PORT=$(choose_port)
 
