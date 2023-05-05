@@ -16,6 +16,7 @@ install-rootfs-pkg:
         dosfstools \
         e2fsprogs \
         efibootmgr \
+        git \
         iproute2 \
         keyutils \
         kmod \
@@ -36,6 +37,9 @@ target-rootfs:
     - console-helper
     - assertd
     - assertd.service
+    - mos-boot
+    - mos-boot.service
+    - mos-boot-failed.service
   run: |
     #!/bin/sh -ex
     writefile() {
@@ -63,6 +67,12 @@ target-rootfs:
 
     cp /stacker/assertd.service /etc/systemd/system/
     systemctl enable assertd.service
+
+    cp /stacker/mos-boot /usr/bin
+    chmod 755 /usr/bin/mos-boot
+    cp /stacker/mos-boot*.service /etc/systemd/system/
+    systemctl enable mos-boot.service
+    systemctl enable mos-boot-failed.service
 
 install-rootfs:
   from:

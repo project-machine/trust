@@ -1,0 +1,13 @@
+[Unit]
+Description=Start up machine os
+After=getty.target multi-user.target local-fs.target
+OnFailure=mos-boot.failed.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=true
+ExecStart=/usr/bin/mos-boot
+StandardOutput=journal+console
+
+[Install]
+WantedBy=multi-user.target

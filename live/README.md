@@ -96,6 +96,11 @@ config:
   name: provision
   uefi: true
   nics:
+  - device: virtio-net
+    id: nic0
+    mac: 52:54:00:81:91:9a
+    network: user
+    ports:
     - protocol: tcp
       host:
         address: ""
@@ -103,6 +108,7 @@ config:
       guest:
         address: ""
         port: 9999
+    bootindex: "off"
   uefi-vars: ~/.local/share/machine/trust/keys/snakeoil/bootkit/ovmf-vars.fd
   cdrom: $TOPDIR/live/provision.iso
   boot: cdrom

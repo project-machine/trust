@@ -1,0 +1,11 @@
+#!/bin/bash
+
+mkdir -p /mos/bootkit /lib/modules
+mosctl mount --ro --target bootkit --dest /mos/bootkit
+mount -t squashfs /mos/bootkit/bootkit/modules.squashfs /lib/modules
+modprobe virtio-net
+# XXX set up static qemu ip address until we have fuller userspace
+ip addr add 10.0.2.15/24 dev enp0s3
+ip link set enp0s3 up
+systemctl stop assertd
+systemctl start assertd
