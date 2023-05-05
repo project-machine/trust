@@ -3,7 +3,7 @@
 # This script is long enough and a common enough operation that it
 # suggests we should have a mosb subcommand for this.
 
-export PATH=$PATH:.
+export PATH="$PATH:$PWD"
 
 usage() {
   echo "Example usage: --project=snakeoil:default --layer=oci:oci:provision-rootfs-squashfs --output provision.iso --help"
