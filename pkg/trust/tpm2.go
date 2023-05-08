@@ -276,6 +276,10 @@ func setupFactory() (string, error) {
 	}
 
 	tmpfsDir := filepath.Join(priv, "factory")
+	if err := EnsureDir(tmpfsDir); err != nil {
+		return "", fmt.Errorf("Failed creating %q: %w", tmpfsDir, err)
+	}
+
 	if err = os.Chmod(tmpfsDir, 0644); err != nil {
 		return "", fmt.Errorf("Failed making tmpfs private: %w", err)
 	}
