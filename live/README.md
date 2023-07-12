@@ -1,5 +1,6 @@
 # Building live cd
 
+ * Ensure you have installed all of the build requirements for mos, trust, and bootkit.  (See the .github/workflows/build.yml files in each)
  * Create bootkit artifacts under .local/share/machine/trust/keys/$keyset - should
    be done by 'trust keyset add'
 
@@ -7,17 +8,24 @@
    git clone https://github.com/hallyn/bootkit
    cd bootkit
    make build
-   umoci unpack --image ../build-bootkit/oci:bootkit \
+   umoci unpack --rootless --image \
+       ../build-bootkit/oci:bootkit xxx
+   mv xxx/rootfs/bootkit
       ~/.local/share/machine/trust/keys/snakeoil/
+   rm -rf xxx
    ```
    NOTE - we want to move that from the project into the keyset.
 
+ * pin rootfs version to use
+   ```
+   export ROOTFS_VERSION=0.0.5.230327-squashfs
+   ```
  * cd live
  * build the rootfs
  
     ```
     stacker build --layer-type=squashfs \
-      --substitute ROOTFS_VERSION=0.0.5.230327-squashfs
+      --substitute ROOTFS_VERSION="${ROOTFS_VERSION}"
     ```
 
    * Note: I  seem to be hitting a bug with this, where it fails to build the second time.
