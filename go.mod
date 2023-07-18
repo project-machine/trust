@@ -3,7 +3,8 @@ module github.com/project-machine/trust
 require (
 	github.com/anuvu/disko v0.0.11
 	github.com/apex/log v1.9.0
-	github.com/canonical/go-tpm2 v0.0.0-20220823192114-7a7993f0fa1f
+	github.com/canonical/go-efilib v0.9.4
+	github.com/canonical/tcglog-parser v0.0.0-20230429160108-0d6d239de69d
 	github.com/fatih/color v1.15.0
 	github.com/foxboron/go-uefi v0.0.0-20230218004016-d1bb9a12f92c
 	github.com/go-git/go-git/v5 v5.4.2
@@ -17,6 +18,7 @@ require (
 	github.com/Microsoft/go-winio v0.4.16 // indirect
 	github.com/ProtonMail/go-crypto v0.0.0-20210428141323-04723f9f07d7 // indirect
 	github.com/acomagu/bufpipe v1.0.3 // indirect
+	github.com/canonical/go-tpm2 v0.1.0 // indirect
 	github.com/emirpasic/gods v1.12.0 // indirect
 	github.com/go-git/gcfg v1.5.0 // indirect
 	github.com/go-git/go-billy/v5 v5.3.1 // indirect
@@ -33,19 +35,19 @@ require (
 	github.com/sergi/go-diff v1.1.0 // indirect
 	github.com/spf13/afero v1.9.3 // indirect
 	github.com/xanzy/ssh-agent v0.3.0 // indirect
-	golang.org/x/crypto v0.6.0 // indirect
-	golang.org/x/net v0.6.0 // indirect
-	golang.org/x/text v0.7.0 // indirect
+	golang.org/x/crypto v0.9.0 // indirect
+	golang.org/x/net v0.10.0 // indirect
+	golang.org/x/text v0.9.0 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 )
 
 require (
-	github.com/canonical/go-sp800.108-kdf v0.0.0-20210314145419-a3359f2d21b9 // indirect
+	github.com/canonical/go-sp800.108-kdf v0.0.0-20210315104021-ead800bbf9a0 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.0-20190314233015-f79a8a8ca69d // indirect
 	github.com/jsipprell/keyctl v1.0.4
 	github.com/russross/blackfriday/v2 v2.0.1 // indirect
 	github.com/shurcooL/sanitized_anchor_name v1.0.0 // indirect
-	golang.org/x/sys v0.6.0 // indirect
+	golang.org/x/sys v0.8.0 // indirect
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 )
 
