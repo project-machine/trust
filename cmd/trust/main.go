@@ -26,6 +26,7 @@ func main() {
 		provisionCmd,
 		tpmPolicyGenCmd,
 		extendPCR7Cmd,
+		computePCR7Cmd,
 
 		// keyset
 		keysetCmd,
