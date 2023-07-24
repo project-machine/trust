@@ -59,6 +59,7 @@ github.com/armon/go-socks5 v0.0.0-20160902184237-e75332964ef5/go.mod h1:wHh0iHkY
 github.com/aws/aws-sdk-go v1.20.6/go.mod h1:KmX6BPdI08NWTb3/sm4ZGu5ShLoqVDhKgpiN924inxo=
 github.com/aybabtme/rgbterm v0.0.0-20170906152045-cc83f3b3ce59/go.mod h1:q/89r3U2H7sSsE2t6Kca0lfwTK8JdoNGS/yzM/4iH5I=
 github.com/bsiegert/ranges v0.0.0-20111221115336-19303dc7aa63/go.mod h1:8z71/aZjDHLs4ihK/5nD5wZVQxm/W4eRDnxQZcJmVD4=
+github.com/canonical/go-efilib v0.3.0/go.mod h1:9b2PNAuPcZsB76x75/uwH99D8CyH/A2y4rq1/+bvplg=
 github.com/canonical/go-efilib v0.3.1-0.20220314143719-95d50e8afc82/go.mod h1:9b2PNAuPcZsB76x75/uwH99D8CyH/A2y4rq1/+bvplg=
 github.com/canonical/go-efilib v0.9.4 h1:cD6oNSWeQSgeSeJZMCxhGEW4GoLSxFhIJ12Hg3vFCtU=
 github.com/canonical/go-efilib v0.9.4/go.mod h1:tHjv3Mni7hEpNSUNd1KJEV/AZJsFSH6LX/EQ0I75AZE=
@@ -66,8 +67,9 @@ github.com/canonical/go-sp800.108-kdf v0.0.0-20210314145419-a3359f2d21b9/go.mod 
 github.com/canonical/go-sp800.108-kdf v0.0.0-20210315104021-ead800bbf9a0 h1:ZE2XMRFHcwlib3uU9is37+pKkkMloVoEPWmgQ6GK1yo=
 github.com/canonical/go-sp800.108-kdf v0.0.0-20210315104021-ead800bbf9a0/go.mod h1:Zrs3YjJr+w51u0R/dyLh/oWt/EcBVdLPCVFYC4daW5s=
 github.com/canonical/go-sp800.90a-drbg v0.0.0-20210314144037-6eeb1040d6c3/go.mod h1:qdP0gaj0QtgX2RUZhnlVrceJ+Qln8aSlDyJwelLLFeM=
-github.com/canonical/go-tpm2 v0.1.0 h1:2mXU+Hy+zYSxmuYys2NtPEO6NwT3Qr9Sygwtops7NYk=
 github.com/canonical/go-tpm2 v0.1.0/go.mod h1:vG41hdbBjV4+/fkubTT1ENBBqSkLwLr7mCeW9Y6kpZY=
+github.com/canonical/go-tpm2 v1.0.0 h1:g03/robj/c+98Hm2GEkkBnKkkhy0xgFZ7GWE/4HzbwM=
+github.com/canonical/go-tpm2 v1.0.0/go.mod h1:zKG2ng7qzxp+siDIa1Scd3h/cXF5Di13Havf5ZwfaVY=
 github.com/canonical/tcglog-parser v0.0.0-20230429160108-0d6d239de69d h1:TAe+Vi2UduW6+Ie8SPJROhkCEPo15CLY/gZqrA9viwk=
 github.com/canonical/tcglog-parser v0.0.0-20230429160108-0d6d239de69d/go.mod h1:AoJVV7tUwDDGPZkKqwqAMGdPiH7x45JLNmxFrxfoxcs=
 github.com/census-instrumentation/opencensus-proto v0.2.1/go.mod h1:f6KPmirojxKA12rnyqOA5BBL4O983OfeGPqjHWSTneU=
@@ -222,6 +224,7 @@ github.com/mgutz/ansi v0.0.0-20170206155736-9520e82c474b/go.mod h1:01TrycV0kFyex
 github.com/mitchellh/go-homedir v1.1.0 h1:lukF9ziXFxDFPkA1vsr5zpc1XuPDn/wFntq5mG+4E0Y=
 github.com/mitchellh/go-homedir v1.1.0/go.mod h1:SfyaCUpYCn1Vlf4IUYiD9fPX4A5wJrkLzIz1N1q0pr0=
 github.com/mvo5/goconfigparser v0.0.0-20201015074339-50f22f44deb5/go.mod h1:xmt4k1xLDl8Tdan+0S/jmMK2uSUBSzTc18+5GN5Vea8=
+github.com/mvo5/goconfigparser v0.0.0-20221018104758-434073381f37/go.mod h1:inxjKzuGbpMDmdoI7kogueqBVRdf6fPAG5dAsU3gu60=
 github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e/go.mod h1:zD1mROLANZcx1PVRCS0qkT7pwLkGfwJo4zjcN/Tysno=
 github.com/onsi/ginkgo v1.6.0/go.mod h1:lLunBs/Ym6LB5Z9jYTR76FiuTmxDTDusOGeTQH+WWjE=
 github.com/onsi/gomega v1.5.0/go.mod h1:ex+gbHU/CVuBBDIJjb2X0qEXbFg53c61hWP/1CpauHY=
@@ -260,6 +263,7 @@ github.com/smartystreets/gunit v1.0.0/go.mod h1:qwPWnhz6pn0NnRBP++URONOVyNkPyr4S
 github.com/snapcore/go-gettext v0.0.0-20191107141714-82bbea49e785 h1:PaunR+BhraKSLxt2awQ42zofkP+NKh/VjQ0PjIMk/y4=
 github.com/snapcore/go-gettext v0.0.0-20191107141714-82bbea49e785/go.mod h1:D3SsWAXK7wCCBZu+Vk5hc1EuKj/L3XN1puEMXTU4LrQ=
 github.com/snapcore/secboot v0.0.0-20211207204151-239d06c34009/go.mod h1:72paVOkm4sJugXt+v9ItmnjXgO921D8xqsbH2OekouY=
+github.com/snapcore/secboot v0.0.0-20221114180054-b4be60e68879/go.mod h1:72paVOkm4sJugXt+v9ItmnjXgO921D8xqsbH2OekouY=
 github.com/snapcore/snapd v0.0.0-20201005140838-501d14ac146e h1:vqDZWKPBL9RKPA8KyOuTaSuXXlmRwn/ndvOkZaAmLJs=
 github.com/snapcore/snapd v0.0.0-20201005140838-501d14ac146e/go.mod h1:3xrn7QDDKymcE5VO2rgWEQ5ZAUGb9htfwlXnoel6Io8=
 github.com/snapcore/squashfuse v0.0.0-20171220165323-319f6d41a041/go.mod h1:8loYitFPSdoeCXBs/XjO0fyGcpgLAybOHLUsGwgMq90=

@@ -1,54 +1,55 @@
 package main
 
 import (
-	"github.com/project-machine/trust/pkg/trust"
+	"errors"
 	"github.com/urfave/cli"
+	"github.com/project-machine/trust/pkg/trust"
 )
 
 var tpmPolicyGenCmd = cli.Command{
 	Name:   "tpm-policy-gen",
-	Usage:  "Generate tpm policy",
+	Usage:  "Generate tpm policy for a keyset",
 	Action: doTpmPolicygen,
 	Flags: []cli.Flag{
 		cli.StringFlag{
-			Name:  "pf,passwd-policy-file",
+			Name:  "pf, passwd-policy-file",
 			Usage: "File to which to write password policy",
 			Value: "passwd_policy.out",
 		},
 		cli.StringFlag{
-			Name:  "lf,luks-policy-file",
+			Name:  "lf, luks-policy-file",
 			Usage: "File to which to write luks policy",
 			Value: "luks_policy.out",
 		},
 		cli.StringFlag{
-			Name:  "pp,passwd-pcr7-file",
-			Usage: "File from which to read password pcr7",
-			Value: "passwd_pcr7.bin",
+			Name:  "pcr7-tpm",
+			Usage: "File from which to read uki-tpm pcr7 value",
 		},
 		cli.StringFlag{
-			Name:  "lp,production-pcr7-file,luks-pcr7-file",
-			Usage: "File from which to read production pcr7",
-			Value: "luks_pcr7.bin",
-		},
-		cli.IntFlag{
-			Name:  "pv,policy-version",
-			Usage: "Policy version",
-			Value: 1,
+			Name:  "pcr7-production",
+			Usage: "File from which to read uki-production pcr7 value",
 		},
 		cli.StringFlag{
-			Name:  "pk,passwd-pubkey-file",
-			Usage: "File from which to read password policy pubkey",
-			Value: "passwd_pubkey.pem",
-		},
-		cli.StringFlag{
-			Name:  "lk,luks-pubkey-file",
-			Usage: "File from which read write luks policy pubkey",
-			Value: "luks_pubkey.pem",
+			Name:  "pv, policy-version",
+			Usage: "A four digit policy version, i.e. 0001",
+			Value: "0001",
 		},
 	},
 }
 
 func doTpmPolicygen(ctx *cli.Context) error {
-	return trust.TpmGenPolicy(ctx)
-}
+	args := ctx.Args()
+	if len(args) != 0 {
+		return errors.New("Usage: extra arguments")
+	}
 
+	pData := trust.PolicyData{
+		Pcr7Prod: ctx.String("pcr7-production"),
+		Pcr7Tpm: ctx.String("pcr7-tpm"),
+		LuksOutFile: ctx.String("luks-policy-file"),
+		PasswdOutFile: ctx.String("passwd-policy-file"),
+		PolicyVersion: ctx.String("policy-version"),
+	}
+
+	return trust.TpmGenPolicy(pData)
+}
