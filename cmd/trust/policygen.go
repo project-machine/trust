@@ -1,7 +1,9 @@
 package main
 
 import (
+	"os"
 	"errors"
+
 	"github.com/urfave/cli"
 	"github.com/project-machine/trust/pkg/trust"
 )
@@ -43,13 +45,60 @@ func doTpmPolicygen(ctx *cli.Context) error {
 		return errors.New("Usage: extra arguments")
 	}
 
-	pData := trust.PolicyData{
-		Pcr7Prod: ctx.String("pcr7-production"),
-		Pcr7Tpm: ctx.String("pcr7-tpm"),
-		LuksOutFile: ctx.String("luks-policy-file"),
-		PasswdOutFile: ctx.String("passwd-policy-file"),
-		PolicyVersion: ctx.String("policy-version"),
+	// Check inputs
+	pcr7ProdFile := ctx.String("pcr7-production")
+	pcr7TpmFile := ctx.String("pcr7-tpm")
+	luksOutFile := ctx.String("luks-policy-file")
+	passwdOutFile := ctx.String("passwd-policy-file")
+	policyVersion := ctx.String("policy-version")
+
+	if pcr7ProdFile == "" || pcr7TpmFile == "" {
+		return errors.New("Missing pcr7 file(s).")
 	}
 
-	return trust.TpmGenPolicy(pData)
+	if luksOutFile == "" {
+		luksOutFile = "luks_policy.out"
+	}
+
+	if passwdOutFile == "" {
+		passwdOutFile = "passwd_policy.out"
+	}
+
+	// Read the pcr7 values from the specified files
+	luksPcr7, err := os.ReadFile(pcr7ProdFile)
+	if err != nil {
+		return err
+	}
+	tpmpassPcr7, err := os.ReadFile(pcr7TpmFile)
+	if err != nil {
+		return err
+	}
+
+	// Generate the TPM EA Policies and Write them to specified output files
+	passwdPolDigest, err := trust.GenPasswdPolicy(tpmpassPcr7)
+	if err != nil {
+		return err
+	}
+	err = os.WriteFile(passwdOutFile, passwdPolDigest, 0400)
+	if err != nil {
+		return err
+	}
+
+	// Remove first policy file if an error occurs with second one
+	defer func() {
+		if err != nil {
+			os.Remove(passwdOutFile)
+		}
+	}()
+
+	luksPolDigest, err := trust.GenLuksPolicy(luksPcr7, policyVersion)
+	if err != nil {
+		return err
+	}
+	err = os.WriteFile(luksOutFile, luksPolDigest, 0400)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
