@@ -171,3 +171,21 @@ func RunCommand(args ...string) error {
 	}
 	return nil
 }
+
+// UserDataDir returns the user's data directory
+func UserDataDir() (string, error) {
+	p, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(p, ".local", "share"), nil
+}
+
+// Get the location where keysets are stored
+func getMosKeyPath() (string, error) {
+	dataDir, err := UserDataDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dataDir, "machine", "trust", "keys"), nil
+}
