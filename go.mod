@@ -51,6 +51,6 @@ require (
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 )
 
-replace github.com/jsipprell/keyctl => github.com/hallyn/keyctl v1.0.4-0.20211206210026-67b989e45620
+replace github.com/jsipprell/keyctl => github.com/hallyn/keyctl v1.0.4-0.20230720164202-b9476cd969e8
 
 go 1.18
