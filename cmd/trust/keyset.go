@@ -2,13 +2,11 @@ package main
 
 import (
 	"crypto/x509"
-	"crypto/rsa"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
-	"encoding/json"
 
 	"github.com/apex/log"
 	"github.com/go-git/go-git/v5"
@@ -262,10 +260,12 @@ var keysetCmd = cli.Command{
 				cli.StringFlag{
 					Name: "passwdPolicy",
 					Usage: "Pathname to the tpm passwd policy file (optional)",
+					Value: "passwd_policy.out",
 				},
 				cli.StringFlag{
 					Name: "luksPolicy",
 					Usage: "Pathname to the luks policy file (optional)",
+					Value: "luks_policy.out",
 				},
 			},
 		},
@@ -431,16 +431,7 @@ func doShowKeyset(ctx *cli.Context) error {
 	return nil
 }
 
-type Pcr7Data struct {
-	limited      string
-	tpm          string
-	production   string
-	passwdPolicy string
-	luksPolicy   string
-}
-
 func doAddPCR7data(ctx *cli.Context) error {
-	var p Pcr7Data
 	args := ctx.Args()
 	if len(args) != 1 {
 		return errors.New("Missing arguments")
@@ -448,176 +439,57 @@ func doAddPCR7data(ctx *cli.Context) error {
 
 	keysetName := args[0]
 
-	p.passwdPolicy = ctx.String("passwdPolicy")
-	p.luksPolicy = ctx.String("luksPolicy")
-	p.limited = ctx.String("pcr7-limited")
-	p.tpm = ctx.String("pcr7-tpm")
-	p.production = ctx.String("pcr7-prod")
+	limited := ctx.String("pcr7-limited")
+	tpm := ctx.String("pcr7-tpm")
+	prod := ctx.String("pcr7-prod")
+	passwdPolicy := ctx.String("passwdPolicy")
+	luksPolicy := ctx.String("luksPolicy")
+
+	// Check inputs
+	// Policy output files have defaults same as when generating policy
+	if limited == "" || tpm == "" || prod == "" {
+		return errors.New("PCR7 values are missing")
+	}
+	if !PathExists(limited) || !PathExists(tpm) || !PathExists(prod) {
+		return errors.New("Some PCR7 files do not exist")
+	}
+	if !PathExists(passwdPolicy) || !PathExists(luksPolicy) {
+		return errors.New("Some policy digest files do not exist")
+	}
+
+	// Read the PCR values
+	limitedPCR7, err := os.ReadFile(limited)
+	if err != nil {
+		return fmt.Errorf("Failed to read %q: (%w)", limited, err)
+	}
+	tpmPCR7, err := os.ReadFile(tpm)
+	if err != nil {
+		return fmt.Errorf("Failed to read %q: (%w)", tpm, err)
+	}
+	prodPCR7, err := os.ReadFile(prod)
+	if err != nil {
+		return fmt.Errorf("Failed to read %q: (%w)", prod, err)
+	}
+
+	// Read the Policy Digest Files
+	passwdPD, err := os.ReadFile(passwdPolicy)
+	if err != nil {
+		return fmt.Errorf("Failed to read %q: (%w)", passwdPolicy, err)
+	}
+	luksPD, err := os.ReadFile(luksPolicy)
+	if err != nil {
+		return fmt.Errorf("Failed to read %q: (%w)", luksPolicy, err)
+	}
+
+	p := pcr7Data{
+			limited:            limitedPCR7,
+			tpm:                tpmPCR7,
+			production:         prodPCR7,
+			passwdPolicyDigest: passwdPD,
+			luksPolicyDigest:   luksPD}
 
 	if err := addPcr7data(keysetName, p); err != nil {
 		return err
-	}
-	return nil
-}
-
-func addPcr7data(keysetName string, pdata Pcr7Data) error {
-	var err error
-	var notexist = true
-	var moskeypath, pcrIndex, newFile string
-	var tpmpolAdminpubkey, tpmpolLukspubkey *rsa.PublicKey
-	var jsonInfo []byte
-	type PCR7info struct {
-		Key string `json:"key"`
-		KeyType string `json:"key_type"`
-		Date string `json:"est_date"`
-		Comment string `json:"comment"`
-	}
-
-	pcr7 := make(map[string]string)
-
-	if keysetName == "" {
-		return errors.New("Please specify a keyset name")
-	}
-
-	pcr7["limited"] = pdata.limited
-	pcr7["tpm"] = pdata.tpm
-	pcr7["production"] = pdata.production
-
-	if pcr7["limited"] == "" || pcr7["tpm"] == "" || pcr7["production"] == "" {
-		return errors.New("Must specify all 3 pcr7 values: tpm, limited and production")
-	}
-
-	// Make sure the pcr7 files exist
-	for _, path := range pcr7 {
-		if !PathExists(path) {
-			return fmt.Errorf("%s does not exist.", path)
-		}
-	}
-
-	// For now, don't generate. Only accept the 2 policies.
-	if pdata.passwdPolicy == "" || !PathExists(pdata.passwdPolicy) {
-		return errors.New("The passwd policy file is missing.")
-	}
-	if pdata.luksPolicy == "" || !PathExists(pdata.luksPolicy) {
-		return errors.New("The luks policy file is missing.")
-	}
-
-	moskeypath, err = getMosKeyPath()
-	if err != nil {
-		return err
-	}
-	keysetPath := filepath.Join(moskeypath, keysetName)
-	if !PathExists(keysetPath) {
-		return fmt.Errorf("The keyset, %s, does not exist.", keysetName)
-	}
-
-	// Its ok if pcr7data dir already exists. We might be adding additional signdata
-	pcr7dataPath := filepath.Join(keysetPath, "pcr7data/policy2")
-	if !PathExists(pcr7dataPath) {
-		err = os.MkdirAll(keysetPath, 0750)
-		if err != nil  {
-			return err
-		}
-	} else {
-		notexist = false
-	}
-
-	defer func() {
-		if err != nil && notexist == true {
-			os.RemoveAll(filepath.Join(keysetPath, "pcr7data"))
-		}
-	}()
-
-	// Check to see if public keys already exist for this keyset, if not
-	// then extract public keys and save them
-	pcr7dataPubkeys := filepath.Join(pcr7dataPath, "pubkeys")
-	if !PathExists(pcr7dataPubkeys) {
-		if err = trust.EnsureDir(pcr7dataPubkeys); err != nil {
-			return errors.New("Failed to create directory for public keys")
-		}
-	}
-
-	tpmpolAdminpubkey, err = extractPubkey(filepath.Join(keysetPath, "tpmpol-admin/cert.pem"))
-	if err != nil {
-		return err
-	}
-	err = savePubkeytoFile(tpmpolAdminpubkey, filepath.Join(pcr7dataPubkeys, "tpmpass-snakeoil.pem"))
-	if err != nil {
-		return err
-	}
-	tpmpolLukspubkey, err = extractPubkey(filepath.Join(keysetPath, "tpmpol-luks/cert.pem"))
-	if err != nil {
-		return  err
-	}
-	err = savePubkeytoFile(tpmpolLukspubkey, filepath.Join(pcr7dataPubkeys, "luks-snakeoil.pem"))
-	if err != nil {
-		return err
-	}
-
-	// - Generate the index for pcr7-limited.bin.
-	//    Add the binary pcr7 values into this index.
-	// - Generate the index for pcr7-production.bin.
-	//    Add the signed tpm-luks policy into this index.
-	// - Generate the index for pcr7-tpm.bin.
-	//    Add the signed tpm-passwd policy into this index.
-	for key, path := range pcr7 {
-		// create index used to name the sub-directories under policy-2 directory
-		pcrIndex, err = createPCR7Index(path)
-		if err != nil {
-			return err
-		}
-		indexdir := filepath.Join(pcr7dataPath, pcrIndex[0:2], pcrIndex[2:])
-		if err = trust.EnsureDir(indexdir); err != nil {
-			return err
-		}
-
-		// create info.json
-		jsonFile := filepath.Join(indexdir, "info.json")
-
-		date := time.Now()
-		formatted := date.Format("2006-01-02")
-		timestamp := strings.ReplaceAll(formatted, "-", "")
-		info := &PCR7info{Key: keysetName, KeyType: key, Date: timestamp, Comment: "mos"+" "+keysetName}
-		jsonInfo, err = json.Marshal(info)
-		if err != nil {
-			return err
-		}
-		if err = os.WriteFile(jsonFile, jsonInfo, 0644); err != nil {
-				return err
-		}
-
-		// write out info
-		switch key {
-		case "limited" :
-			newFile = filepath.Join(indexdir, "pcr_limited.bin")
-			if err = trust.CopyFile(pcr7["limited"], newFile); err != nil {
-				return err
-			}
-			newFile = filepath.Join(indexdir, "pcr_tpm.bin")
-			if err = trust.CopyFile(pcr7["tpm"], newFile); err != nil {
-				return err
-			}
-			newFile = filepath.Join(indexdir, "pcr_prod.bin")
-			if err = trust.CopyFile(pcr7["production"], newFile); err != nil {
-				return err
-			}
-		case "tpm" :
-			// Sign the policy
-			newFile = filepath.Join(indexdir, "tpm_passwd.policy.signed")
-			signingKey := filepath.Join(keysetPath, "tpmpol-admin/privkey.pem")
-			if err = trust.Sign(pdata.passwdPolicy, newFile, signingKey); err != nil {
-				return err
-			}
-		case "production" :
-			// Sign the policy
-			newFile = filepath.Join(indexdir, "tpm_luks.policy.signed")
-			signingKey := filepath.Join(keysetPath, "tpmpol-luks/privkey.pem")
-			if err = trust.Sign(pdata.luksPolicy, newFile, signingKey); err != nil {
-				return err
-			}
-		default :
-			return errors.New("Unrecognized uki key")
-		}
 	}
 	return nil
 }

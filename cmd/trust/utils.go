@@ -8,15 +8,18 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"math/big"
 	"os"
 	"path/filepath"
 	"time"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
+	"github.com/project-machine/trust/pkg/trust"
 )
 
 // PathExists checks for existense of specified path
@@ -74,16 +77,16 @@ func getMosKeyPath() (string, error) {
 }
 
 func KeysetExists(keysetname string) bool {
-    mosKeyPath, err := getMosKeyPath()
-    if err != nil {
-        return false
-    }
-    keysetPath := filepath.Join(mosKeyPath, keysetname)
-    if PathExists(keysetPath) {
-        return true
-    } else {
-        return false
-    }
+	mosKeyPath, err := getMosKeyPath()
+	if err != nil {
+		return false
+	}
+	keysetPath := filepath.Join(mosKeyPath, keysetname)
+	if PathExists(keysetPath) {
+		return true
+	} else {
+		return false
+	}
 }
 
 // SignCert creates a CA signed certificate and keypair in destdir
@@ -420,11 +423,11 @@ func generateCreds(destdir string, doguid bool, template *x509.Certificate) erro
 	return nil
 }
 
-func createPCR7Index(pcr7file string) (string, error) {
-	c, err := os.ReadFile(pcr7file)
-	if err != nil {
-		return "", err
-	}
+// Flips the bits of pcr7val to produce an index for pcr7dara dir.
+// Copies the value so we do not alter original.
+func createPCR7Index(pcr7Val []byte) (string, error) {
+	c := make([]byte, len(pcr7Val))
+	copy(c, pcr7Val)
 	for start := 0; start+1 < len(c); start += 2 {
 		tmp := c[start]
 		c[start] = c[start+1]
@@ -451,21 +454,188 @@ func extractPubkey(certPath string) (*rsa.PublicKey, error) {
 }
 
 func savePubkeytoFile(pubkey *rsa.PublicKey, outPath string) error {
-    pubkeyPem, err := os.Create(outPath)
-    if err != nil {
-        return err
-    }
-    pkix, err := x509.MarshalPKIXPublicKey(pubkey)
-    if err != nil {
-        return err
-    }
-    err = pem.Encode(pubkeyPem, &pem.Block{Type: "PUBLIC KEY", Bytes: pkix})
-    if err != nil {
-        return err
-    }
-    err = os.Chmod(outPath, 0644)
-    if err != nil {
-        return err
-    }
-    return nil
+	pubkeyPem, err := os.Create(outPath)
+	if err != nil {
+		return err
+	}
+	pkix, err := x509.MarshalPKIXPublicKey(pubkey)
+	if err != nil {
+		return err
+	}
+	err = pem.Encode(pubkeyPem, &pem.Block{Type: "PUBLIC KEY", Bytes: pkix})
+	if err != nil {
+		return err
+	}
+	err = os.Chmod(outPath, 0644)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+type pcr7Data struct {
+	limited            []byte
+	tpm                []byte
+	production         []byte
+	passwdPolicyDigest []byte
+	luksPolicyDigest   []byte
+}
+
+// Create the various signdata artifacts for a keyset and
+// add to the pcr7data dir of the keyset.
+func addPcr7data(keysetName string, pdata pcr7Data) error {
+	var err error
+	var notexist = true
+	var moskeypath, pcrIndex string
+	var tpmpolAdminpubkey, tpmpolLukspubkey *rsa.PublicKey
+	var jsonInfo []byte
+	type PCR7info struct {
+		Key string `json:"key"`
+		KeyType string `json:"key_type"`
+		Date string `json:"est_date"`
+		Comment string `json:"comment"`
+	}
+
+	// Check inputs
+	if keysetName == "" {
+		return errors.New("Please specify a keyset name")
+	}
+	moskeypath, err = getMosKeyPath()
+	if err != nil {
+		return err
+	}
+	keysetPath := filepath.Join(moskeypath, keysetName)
+	if !PathExists(keysetPath) {
+		return fmt.Errorf("The keyset, %s, does not exist.", keysetName)
+	}
+
+	if pdata.limited == nil || pdata.tpm == nil || pdata.production == nil {
+		return errors.New("Must specify all 3 pcr7 values: tpm, limited and production")
+	}
+
+	if pdata.passwdPolicyDigest == nil || pdata.luksPolicyDigest == nil {
+		return errors.New("The passwd policy file is missing.")
+	}
+
+	// Create pcr7data directory if it does not exist.
+	// Its ok if pcr7data dir already exists. We might be adding additional signdata
+	pcr7dataPath := filepath.Join(keysetPath, "pcr7data/policy-2")
+	if !PathExists(pcr7dataPath) {
+		err = os.MkdirAll(keysetPath, 0750)
+		if err != nil  {
+			return err
+		}
+	} else {
+		notexist = false
+	}
+
+	// Dont remove pcr7data dir on error if it already existed.
+	defer func() {
+		if err != nil && notexist == true {
+			os.RemoveAll(filepath.Join(keysetPath, "pcr7data"))
+		}
+	}()
+
+	// Check to see if public keys already exist for this keyset, if not
+	// then extract public keys and save them to pcr7data dir.
+	pcr7dataPubkeys := filepath.Join(pcr7dataPath, "pubkeys")
+	if !PathExists(pcr7dataPubkeys) {
+		if err = trust.EnsureDir(pcr7dataPubkeys); err != nil {
+			return errors.New("Failed to create directory for public keys")
+		}
+	}
+	tpmpolAdminpubkey, err = extractPubkey(filepath.Join(keysetPath, "tpmpol-admin/cert.pem"))
+	if err != nil {
+		return err
+	}
+	err = savePubkeytoFile(tpmpolAdminpubkey, filepath.Join(pcr7dataPubkeys, "tpmpass-snakeoil.pem"))
+	if err != nil {
+		return err
+	}
+	tpmpolLukspubkey, err = extractPubkey(filepath.Join(keysetPath, "tpmpol-luks/cert.pem"))
+	if err != nil {
+		return  err
+	}
+	err = savePubkeytoFile(tpmpolLukspubkey, filepath.Join(pcr7dataPubkeys, "luks-snakeoil.pem"))
+	if err != nil {
+		return err
+	}
+
+	// - Generate the index for pcr7-limited.bin.
+	//    Add the binary pcr7 values into this index.
+	// - Generate the index for pcr7-production.bin.
+	//    Add the signed tpm-luks policy into this index.
+	// - Generate the index for pcr7-tpm.bin.
+	//    Add the signed tpm-passwd policy into this index.
+	pcr7 := make(map[string][]byte)
+	pcr7["limited"] = pdata.limited
+	pcr7["tpm"] = pdata.tpm
+	pcr7["production"] = pdata.production
+
+	for pcr, value := range pcr7 {
+		// create index used to name the sub-directories under policy-2 directory
+		pcrIndex, err = createPCR7Index(value)
+		if err != nil {
+			return err
+		}
+		indexdir := filepath.Join(pcr7dataPath, pcrIndex[0:2], pcrIndex[2:])
+		if err = trust.EnsureDir(indexdir); err != nil {
+			return err
+		}
+
+		// create info.json
+		jsonFile := filepath.Join(indexdir, "info.json")
+
+		date := time.Now()
+		formatted := date.Format("2006-01-02")
+		timestamp := strings.ReplaceAll(formatted, "-", "")
+		info := &PCR7info{Key: keysetName, KeyType: pcr, Date: timestamp, Comment: "mos"+" "+keysetName}
+		jsonInfo, err = json.Marshal(info)
+		if err != nil {
+			return err
+		}
+		if err = os.WriteFile(jsonFile, jsonInfo, 0644); err != nil {
+				return err
+		}
+
+		// write out info
+		switch pcr {
+		case "limited" :
+			pcrFile := filepath.Join(indexdir, "pcr_limited.bin")
+			if err = os.WriteFile(pcrFile, pdata.limited, 0644); err != nil {
+				return err
+			}
+			pcrFile = filepath.Join(indexdir, "pcr_tpm.bin")
+			if err = os.WriteFile(pcrFile, pdata.tpm, 0644); err != nil {
+				return err
+			}
+			pcrFile = filepath.Join(indexdir, "pcr_prod.bin")
+			if err = os.WriteFile(pcrFile, pdata.production, 0644); err != nil {
+				return err
+			}
+		case "tpm" :
+			// Create policy file and Sign the policy
+			policyFile := filepath.Join(indexdir, "tpm_passwd.policy.signed")
+			if err = os.WriteFile(policyFile, pdata.passwdPolicyDigest, 0644); err != nil {
+				return err
+			}
+			signingKey := filepath.Join(keysetPath, "tpmpol-admin/privkey.pem")
+			if err = trust.Sign(policyFile, policyFile, signingKey); err != nil {
+				return err
+			}
+		case "production" :
+			// Sign the policy
+			policyFile := filepath.Join(indexdir, "tpm_luks.policy.signed")
+			if err = os.WriteFile(policyFile, pdata.luksPolicyDigest, 0644); err != nil {
+				return err
+			}
+			signingKey := filepath.Join(keysetPath, "tpmpol-luks/privkey.pem")
+			if err = trust.Sign(policyFile, policyFile, signingKey); err != nil {
+				return err
+			}
+		default :
+			return errors.New("Unrecognized uki key")
+		}
+	}
+	return nil
 }
