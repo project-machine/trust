@@ -199,6 +199,36 @@ func initkeyset(keysetName string, Org []string) error {
 		return errors.Wrapf(err, "Failed creating default project keyset")
 	}
 
+	// Generate the 3 uki-* pcr7 values for this keyset
+	prodPcr, limitedPcr, tpmPcr, err := trust.ComputePCR7(keysetName)
+	if err != nil {
+		return err
+	}
+
+	// Generate the luks EA Policies for this keyset
+	luksPolicyDigest, err := trust.GenLuksPolicy(prodPcr, trust.PolicyVersion.String())
+	if err != nil {
+		return err
+	}
+
+	// Generate the tpm passwod EA Policy Digest for this keyset
+	tpmpasswdPolicyDigest, err := trust.GenPasswdPolicy(tpmPcr)
+	if err != nil {
+		return err
+	}
+
+	// Add the signdata to the keyset
+	p := pcr7Data{
+			limited: limitedPcr,
+			tpm: tpmPcr,
+			production: prodPcr,
+			passwdPolicyDigest: tpmpasswdPolicyDigest,
+			luksPolicyDigest: luksPolicyDigest}
+
+	if err = addPcr7data(keysetName, p); err != nil {
+		return fmt.Errorf("Failed to add the pcr7data to keyset %q: (%w)", keysetName, err)
+	}
+
 	return nil
 }
 
