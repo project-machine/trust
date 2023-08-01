@@ -1,7 +1,7 @@
 all: trust
 
 trust: cmd/trust/*.go pkg/trust/*.go pkg/printdirtree/*.go
-	go build -o trust ./cmd/trust/
+	go build -buildvcs=false -o trust ./cmd/trust/
 
 clean:
 	rm -f trust
