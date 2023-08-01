@@ -3,8 +3,8 @@ on:
   pull_request:
 name: build
 jobs:
-  build:
-    name: build
+  build_amd64:
+    name: build on ubuntu-22.04 amd64
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
@@ -22,8 +22,40 @@ jobs:
       - name: test
         run: |
           make test
+      - name: Rename Binary
+        run: |
+          mv trust trust-linux-amd64
       - name: Release
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: trust
+          files: trust-linux-amd64
+  
+  build_arm64:
+    runs-on: ubuntu-latest
+    name: Build on ubuntu-latest arm64
+    steps:
+      - uses: actions/checkout@v3
+      - uses: uraimo/run-on-arch-action@v2
+        with:
+          arch: aarch64
+          distro: ubuntu22.04
+
+          githubToken: ${{ github.token }}
+
+          install: |
+            apt-get -y update;
+            apt-get install -q -y git golang-go;
+            apt-get install -y bats golang make openssl swtpm tpm2-tools qemu-kvm
+          run: |
+              go version
+              make
+              make test
+      - name: Rename Binary
+        run: |
+          mv trust trust-linux-arm64
+      - name: release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: trust-linux-arm64
