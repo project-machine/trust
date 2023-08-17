@@ -231,6 +231,11 @@ func initkeyset(keysetName string, Org []string) error {
 		return fmt.Errorf("Failed to add the pcr7data to keyset %q: (%w)", keysetName, err)
 	}
 
+	// Now create the bootkit artifacts
+	if err = trust.SetupBootkit(keysetName); err != nil {
+		return fmt.Errorf("Failed creating bootkit artifacts for keyset %q: (%w)", keysetName, err)
+	}
+
 	return nil
 }
 
