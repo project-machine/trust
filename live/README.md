@@ -40,7 +40,7 @@
     trust keyset add mostest
     trust project add mostest livecd
     ./build-livecd-rfs --project=mostest:livecd \
-          --layer oci:oci:livecd-rootfs-squashfs
+          --layer oci:oci:rootfs-squashfs
     ````
     The result will be a ./livecd.iso.  There will also be a complete
     zot layout under ./zot-cache, if you want to snoop around.
