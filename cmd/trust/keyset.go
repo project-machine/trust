@@ -122,9 +122,8 @@ func initkeyset(keysetName string, Org []string) error {
 
 	// Prepare certificate template
 
-	//OU := fmt.Sprintf("PuzzlesOS Machine Project %s", keysetName)
 	caTemplate.Subject.Organization = Org
-	caTemplate.Subject.OrganizationalUnit = []string{"PuzzlesOS Machine Project " + keysetName}
+	caTemplate.Subject.OrganizationalUnit = []string{"Project Machine Project " + keysetName}
 	caTemplate.Subject.CommonName = "Manifest rootCA"
 	caTemplate.NotBefore = time.Now()
 	caTemplate.NotAfter = time.Now().AddDate(25, 0, 0)
@@ -155,7 +154,7 @@ func initkeyset(keysetName string, Org []string) error {
 
 	// Generate additional MOS credentials
 	certTemplate.Subject.Organization = Org
-	certTemplate.Subject.OrganizationalUnit = []string{"PuzzlesOS Machine Project " + keysetName}
+	certTemplate.Subject.OrganizationalUnit = []string{"Project Machine Project " + keysetName}
 	certTemplate.NotBefore = time.Now()
 	certTemplate.NotAfter = time.Now().AddDate(25, 0, 0)
 	certTemplate.KeyUsage = x509.KeyUsageDigitalSignature
