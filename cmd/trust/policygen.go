@@ -79,7 +79,7 @@ func doTpmPolicygen(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	err = os.WriteFile(passwdOutFile, passwdPolDigest, 0400)
+	err = os.WriteFile(passwdOutFile, passwdPolDigest, 0644)
 	if err != nil {
 		return err
 	}
@@ -95,7 +95,7 @@ func doTpmPolicygen(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	err = os.WriteFile(luksOutFile, luksPolDigest, 0400)
+	err = os.WriteFile(luksOutFile, luksPolDigest, 0644)
 	if err != nil {
 		return err
 	}
