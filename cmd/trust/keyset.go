@@ -54,12 +54,12 @@ func generateMosCreds(keysetPath string, ctemplate *x509.Certificate) error {
 		doguid bool
 	}
 	keyinfo := map[string]AddCertInfo{
-		"tpmpol-admin":   AddCertInfo{"TPM EAPolicy Admin", false},
-		"tpmpol-luks":    AddCertInfo{"TPM EAPolicy LUKS", false},
-		"uki-tpm":        AddCertInfo{"UKI TPM", true},
-		"uki-limited":    AddCertInfo{"UKI Limited", true},
-		"uki-production": AddCertInfo{"UKI Production", true},
-		"uefi-db":        AddCertInfo{"UEFI DB", true},
+		"tpmpol-admin":   {"TPM EAPolicy Admin", false},
+		"tpmpol-luks":    {"TPM EAPolicy LUKS", false},
+		"uki-tpm":        {"UKI TPM", true},
+		"uki-limited":    {"UKI Limited", true},
+		"uki-production": {"UKI Production", true},
+		"uefi-db":        {"UEFI DB", true},
 	}
 
 	for key, CertInfo := range keyinfo {
@@ -218,11 +218,11 @@ func initkeyset(keysetName string, Org []string) error {
 
 	// Add the signdata to the keyset
 	p := pcr7Data{
-			limited: limitedPcr,
-			tpm: tpmPcr,
-			production: prodPcr,
-			passwdPolicyDigest: tpmpasswdPolicyDigest,
-			luksPolicyDigest: luksPolicyDigest}
+		limited:            limitedPcr,
+		tpm:                tpmPcr,
+		production:         prodPcr,
+		passwdPolicyDigest: tpmpasswdPolicyDigest,
+		luksPolicyDigest:   luksPolicyDigest}
 
 	if err = addPcr7data(keysetName, p); err != nil {
 		return fmt.Errorf("Failed to add the pcr7data to keyset %q: (%w)", keysetName, err)
@@ -235,12 +235,12 @@ var keysetCmd = cli.Command{
 	Name:  "keyset",
 	Usage: "Administer keysets for mos",
 	Subcommands: []cli.Command{
-		cli.Command{
+		{
 			Name:   "list",
 			Action: doListKeysets,
 			Usage:  "list keysets",
 		},
-		cli.Command{
+		{
 			Name:      "add",
 			Action:    doAddKeyset,
 			Usage:     "add a new keyset",
@@ -252,7 +252,7 @@ var keysetCmd = cli.Command{
 				},
 			},
 		},
-		cli.Command{
+		{
 			Name:      "show",
 			Action:    doShowKeyset,
 			Usage:     "show keyset key values or paths",
@@ -268,31 +268,31 @@ var keysetCmd = cli.Command{
 				},
 			},
 		},
-		cli.Command{
-			Name:		"pcr7data",
-			Action:		doAddPCR7data,
-			Usage:		"include the specified pcr7data into keyset",
-			ArgsUsage:	"<keyset-name>",
+		{
+			Name:      "pcr7data",
+			Action:    doAddPCR7data,
+			Usage:     "include the specified pcr7data into keyset",
+			ArgsUsage: "<keyset-name>",
 			Flags: []cli.Flag{
 				cli.StringFlag{
-					Name: "pcr7-tpm",
+					Name:  "pcr7-tpm",
 					Usage: "Pathname to the pcr7 tpm binary file",
 				},
 				cli.StringFlag{
-					Name: "pcr7-limited",
+					Name:  "pcr7-limited",
 					Usage: "Pathname to the pcr7 limited binary file",
 				},
 				cli.StringFlag{
-					Name: "pcr7-prod",
+					Name:  "pcr7-prod",
 					Usage: "Pathname to the pcr7 production binary file",
 				},
 				cli.StringFlag{
-					Name: "passwdPolicy",
+					Name:  "passwdPolicy",
 					Usage: "Pathname to the tpm passwd policy file (optional)",
 					Value: "passwd_policy.out",
 				},
 				cli.StringFlag{
-					Name: "luksPolicy",
+					Name:  "luksPolicy",
 					Usage: "Pathname to the luks policy file (optional)",
 					Value: "luks_policy.out",
 				},
@@ -511,11 +511,11 @@ func doAddPCR7data(ctx *cli.Context) error {
 	}
 
 	p := pcr7Data{
-			limited:            limitedPCR7,
-			tpm:                tpmPCR7,
-			production:         prodPCR7,
-			passwdPolicyDigest: passwdPD,
-			luksPolicyDigest:   luksPD}
+		limited:            limitedPCR7,
+		tpm:                tpmPCR7,
+		production:         prodPCR7,
+		passwdPolicyDigest: passwdPD,
+		luksPolicyDigest:   luksPD}
 
 	if err := addPcr7data(keysetName, p); err != nil {
 		return err
