@@ -9,17 +9,26 @@ function teardown() {
 }
 
 @test "Keyset creation creates sudi" {
+	if [ "$(arch)" != "x86_64" ]; then
+		skip "Not supported on $(arch)"
+	fi
 	trust keyset add zomg
 	trust sudi list zomg default
 }
 
 @test "Project creation creates sudi" {
+	if [ "$(arch)" != "x86_64" ]; then
+		skip "Not supported on $(arch)"
+	fi
 	trust keyset add zomg
 	trust project add zomg newproject
 	trust sudi list zomg newproject
 }
 
 @test "Create sudi" {
+	if [ "$(arch)" != "x86_64" ]; then
+		skip "Not supported on $(arch)"
+	fi
 	trust keyset add zomg
 	trust project add zomg newproject
 	trust sudi add zomg newproject  # auto-create uuid
