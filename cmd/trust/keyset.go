@@ -45,6 +45,9 @@ func isValidKeyDir(keydir string) bool {
 			return true
 		}
 	}
+	if strings.HasPrefix(keydir, "manifest:") {
+		return true
+	}
 	return false
 }
 
@@ -405,6 +408,15 @@ func doShowKeyset(ctx *cli.Context) error {
 
 	if !isValidKeyDir(keyName) {
 		return fmt.Errorf("Invalid keyset key name '%s':, must be one of: %s", strings.Join(KeysetKeyDirs, ", "))
+	}
+
+	// manifest requires a project name
+	if keyName == "manifest" {
+		return fmt.Errorf("keyset key 'manifest' requires a project value, use 'trust project list %s' to list projects for this keyset", keysetName)
+	}
+
+	if strings.HasPrefix(keyName, "manifest:") {
+		keyName = strings.Replace(keyName, ":", "/", 1)
 	}
 
 	keyPath := filepath.Join(keysetPath, keyName)
