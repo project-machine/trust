@@ -15,7 +15,11 @@ jobs:
       - name: install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install bats golang make openssl swtpm tpm2-tools qemu-kvm
+          sudo apt-get install bats golang make openssl swtpm tpm2-tools \
+            libcryptsetup-dev libgpgme-dev libcap-dev qemu-kvm \
+            libdevmapper-dev libacl1-dev libarchive-tools pip squashfs-tools \
+            sbsigntool
+          pip install virt-firmware
       - name: build
         run: |
           make
@@ -46,7 +50,11 @@ jobs:
           install: |
             apt-get -y update;
             apt-get install -q -y git golang-go;
-            apt-get install -y bats golang make openssl swtpm tpm2-tools qemu-kvm
+            apt-get install -y bats golang make openssl swtpm tpm2-tools \
+              libcryptsetup-dev libgpgme-dev libcap-dev qemu-kvm \
+              libdevmapper-dev libacl1-dev libarchive-tools pip squashfs-tools \
+              sbsigntool
+            pip install virt-firmware
           run: |
               go version
               make
