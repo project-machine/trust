@@ -1,20 +1,12 @@
 # Building live cd
 
  * Ensure you have installed all of the build requirements for mos, trust, and bootkit.  (See the .github/workflows/build.yml files in each)
- * Create bootkit artifacts under .local/share/machine/trust/keys/$keyset - should
-   be done by 'trust keyset add'
+ * Create a keyset and project
 
    ```
-   git clone https://github.com/hallyn/bootkit
-   cd bootkit
-   make build
-   umoci unpack --rootless --image \
-       ../build-bootkit/oci:bootkit xxx
-   mv xxx/rootfs/bootkit
-      ~/.local/share/machine/trust/keys/snakeoil/
-   rm -rf xxx
+   trust keyset add mostest
+   trust project add mostest livecd
    ```
-   NOTE - we want to move that from the project into the keyset.
 
  * pin rootfs version to use
    ```
@@ -33,22 +25,16 @@
  * Build a signed manifest pointing at your rfs
 
     ```
-    ./build-livecd-rfs
+    ./build-livecd-rfs --project=mostest:livecd
     ```
-    or if you're doing things more custom,
-    ```
-    trust keyset add mostest
-    trust project add mostest livecd
-    ./build-livecd-rfs --project=mostest:livecd \
-          --layer oci:oci:rootfs-squashfs
-    ````
+
     The result will be a ./livecd.iso.  There will also be a complete
     zot layout under ./zot-cache, if you want to snoop around.
 
  * boot the usb media. 
  
    ```
-   machine init livecd << EOF
+   cat > livecd.yaml << EOF
     name: livecd
     type: kvm
     ephemeral: false
@@ -56,8 +42,8 @@
     config:
       name: trust
       uefi: true
-      uefi-vars: /home/serge/src/project-machine/trust/live/ovmf-vars.fd
-      cdrom: /home/serge/src/project-machine/trust/live/livecd.iso
+      uefi-vars: /home/ubuntu/.local/share/machine/trust/keys/mostest/bootkit/ovmf-vars.fd
+      cdrom: /home/ubuntu/trust/live/livecd.iso
       boot: cdrom
       tpm: true
       gui: true
@@ -65,10 +51,11 @@
       tpm-version: 2.0
       secure-boot: true
       disks:
-          - file: /home/serge/src/project-machine/trust/live/livecd.qcow2
+          - file: /home/ubunu/trust/live/livecd.qcow2
             type: ssd
-            size: 20G
+            size: 100G
    EOF
+   machine init -f livecd.yaml
    machine start livecd
    machine gui livecd
     ```
