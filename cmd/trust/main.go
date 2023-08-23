@@ -4,6 +4,7 @@ import (
 	"os"
 
 	"github.com/apex/log"
+	"github.com/project-machine/trust/pkg/trust"
 	"github.com/urfave/cli"
 )
 
@@ -11,15 +12,11 @@ import (
 //   boot - read data from tpm, extend pcr7
 //   intrd-setup - create new luks key, extend pcr7
 
-
-// Version of trust
-const Version = "0.01"
-
 func main() {
 	app := cli.NewApp()
 	app.Name = "trust"
 	app.Usage = "Manage the trustroot"
-	app.Version = Version
+	app.Version = trust.Version
 	app.Commands = []cli.Command{
 		initrdSetupCmd,
 		preInstallCmd,

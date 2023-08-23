@@ -56,6 +56,9 @@ jobs:
               sbsigntool
             pip install virt-firmware
           run: |
+              git config --global --add safe.directory /home/runner/work/trust/trust
+              pwd
+              git describe --always --dirty
               go version
               make
               make test
