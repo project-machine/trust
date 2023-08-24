@@ -231,11 +231,6 @@ func initkeyset(keysetName string, Org []string) error {
 		return fmt.Errorf("Failed to add the pcr7data to keyset %q: (%w)", keysetName, err)
 	}
 
-	// Now create the bootkit artifacts
-	if err = trust.SetupBootkit(keysetName); err != nil {
-		return fmt.Errorf("Failed creating bootkit artifacts for keyset %q: (%w)", keysetName, err)
-	}
-
 	return nil
 }
 
@@ -336,17 +331,26 @@ func doAddKeyset(ctx *cli.Context) error {
 		return fmt.Errorf("%s keyset already exists", keysetName)
 	}
 
-	// git clone if keyset is snakeoil
-	if keysetName == "snakeoil" {
+	switch keysetName {
+	case keysetName:
+		// git clone if keyset is snakeoil
 		_, err = git.PlainClone(keysetPath, false, &git.CloneOptions{URL: "https://github.com/project-machine/keys.git"})
-		if err != nil {
-			os.Remove(keysetPath)
-			return err
-		}
-		return nil
+
+	default:
+		// Otherwise, generate a new keyset
+		err = initkeyset(keysetName, Org)
 	}
-	// Otherwise, generate a new keyset
-	return initkeyset(keysetName, Org)
+	if err != nil {
+		os.Remove(keysetPath)
+		return errors.Wrapf(err, "Failed creating keyset %q", keysetName)
+	}
+
+	// Now create the bootkit artifacts
+	if err = trust.SetupBootkit(keysetName); err != nil {
+		return fmt.Errorf("Failed creating bootkit artifacts for keyset %q: (%w)", keysetName, err)
+	}
+
+	return nil
 }
 
 func doListKeysets(ctx *cli.Context) error {
