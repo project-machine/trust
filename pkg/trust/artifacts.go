@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 
+	"github.com/apex/log"
 	efi "github.com/canonical/go-efilib"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	rspec "github.com/opencontainers/runtime-spec/specs-go"
@@ -162,6 +164,16 @@ func UpdateShim(inShim, newShim, keysetPath string) error {
 }
 
 func SetupBootkit(keysetName string) error {
+	// TODO - we have to fix this by
+	// a. having bootkit generate arm64
+	// b. changing the bootkit layer naming to reflect arch
+	// c. using the bootkit api here instead of doing it ourselves
+	// for now, we just do nothing on arm64
+	if runtime.GOARCH != "amd64" {
+		log.Warnf("Running on %q, so not building bootkit artifacts (only amd64 supported).", runtime.GOARCH)
+		return nil
+	}
+
 	tmpdir, err := os.MkdirTemp("", "trust-bootkit")
 	if err != nil {
 		return errors.Wrapf(err, "Failed creating temporary directory")
@@ -244,17 +256,17 @@ func SetupBootkit(keysetName string) error {
 	if err != nil {
 		return errors.Wrapf(err, "failed reading uefi-pk guid")
 	}
-	pkGuid := string(pkGuidBytes)
+	pkGuid := strings.TrimSpace(string(pkGuidBytes))
 	kekGuidBytes, err := os.ReadFile(filepath.Join(keysetPath, "uefi-kek", "guid"))
 	if err != nil {
 		return errors.Wrapf(err, "failed reading uefi-kek guid")
 	}
-	kekGuid := string(kekGuidBytes)
+	kekGuid := strings.TrimSpace(string(kekGuidBytes))
 	dbGuidBytes, err := os.ReadFile(filepath.Join(keysetPath, "uefi-db", "guid"))
 	if err != nil {
 		return errors.Wrapf(err, "failed reading uefi-db guid")
 	}
-	dbGuid := string(dbGuidBytes)
+	dbGuid := strings.TrimSpace(string(dbGuidBytes))
 
 	outFile := filepath.Join(destDir, "ovmf-vars.fd")
 	cmd = []string{
