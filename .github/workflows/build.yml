@@ -53,8 +53,15 @@ jobs:
             apt-get install -y bats golang make openssl swtpm tpm2-tools \
               libcryptsetup-dev libgpgme-dev libcap-dev qemu-kvm \
               libdevmapper-dev libacl1-dev libarchive-tools pip squashfs-tools \
-              sbsigntool
+              sbsigntool wget
             pip install virt-firmware
+            mv /usr/lib/go /usr/lib/go.no || true
+            cd /tmp/
+            wget https://go.dev/dl/go1.21.0.linux-arm64.tar.gz
+            tar -C /usr/lib -zvxf go1.21.0.linux-arm64.tar.gz
+            rm /usr/bin/go /usr/bin/gofmt
+            ln -s /usr/lib/go/bin/go /usr/bin/go
+            ln -s /usr/lib/go/bin/gofmt /usr/bin/gofmt
           run: |
               git config --global --add safe.directory /home/runner/work/trust/trust
               pwd
