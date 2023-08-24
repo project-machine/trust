@@ -15,7 +15,7 @@ require (
 	github.com/opencontainers/umoci v0.4.8-0.20220412065115-12453f247749
 	github.com/pkg/errors v0.9.1
 	github.com/plus3it/gorecurcopy v0.0.1
-	github.com/project-machine/bootkit/pkg v0.0.5
+	github.com/project-machine/bootkit v0.0.8
 	github.com/project-stacker/stacker v0.21.2
 	github.com/stretchr/testify v1.7.1
 	github.com/urfave/cli v1.22.10
@@ -125,6 +125,6 @@ require (
 
 replace github.com/jsipprell/keyctl => github.com/hallyn/keyctl v1.0.4-0.20230720164202-b9476cd969e8
 
-replace github.com/project-machine/bootkit/pkg => github.com/project-machine/bootkit/pkg v0.0.0-20230718153143-d9415f673695
+go 1.21
 
-go 1.18
+toolchain go1.21.0
