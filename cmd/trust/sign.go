@@ -9,25 +9,25 @@ import (
 )
 
 var signCmd = cli.Command{
-	Name: "sign",
+	Name:  "sign",
 	Usage: "Create Digital Signature",
 	Subcommands: []cli.Command{
 		cli.Command{
-			Name: "efi",
-			Action: doSignEFI,
-			Usage: "sign an efi binary",
+			Name:      "efi",
+			Action:    doSignEFI,
+			Usage:     "sign an efi binary",
 			ArgsUsage: "<efi-file>",
 			Flags: []cli.Flag{
 				cli.StringFlag{
-					Name: "key",
+					Name:  "key",
 					Usage: "The private key to sign the efi binary.",
 				},
 				cli.StringFlag{
-					Name: "cert",
+					Name:  "cert",
 					Usage: "The X509 certificate for creating signature.",
 				},
 				cli.StringFlag{
-					Name: "output",
+					Name:  "output",
 					Usage: "PathName for the signed efi binary.",
 				},
 			},

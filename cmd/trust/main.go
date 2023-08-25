@@ -39,7 +39,6 @@ func main() {
 
 		// verify
 		verifyCmd,
-
 	}
 	app.Flags = []cli.Flag{
 		cli.BoolFlag{

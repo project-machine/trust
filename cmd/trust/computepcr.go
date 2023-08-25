@@ -4,8 +4,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/urfave/cli"
 	"github.com/project-machine/trust/pkg/trust"
+	"github.com/urfave/cli"
 )
 
 var computePCR7Cmd = cli.Command{

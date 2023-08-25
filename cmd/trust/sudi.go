@@ -35,8 +35,9 @@ var sudiCmd = cli.Command{
 }
 
 // ~/.local/share/machine/trust/keys/
-//      keyset1/manifest/project-name/{uuid,privkey.pem,cert.pem}
-//      keyset1/manifest/project-name/sudi/host-serial/{uuid,privkey.pem,cert.pem}
+//
+//	keyset1/manifest/project-name/{uuid,privkey.pem,cert.pem}
+//	keyset1/manifest/project-name/sudi/host-serial/{uuid,privkey.pem,cert.pem}
 func doGenSudi(ctx *cli.Context) error {
 	args := ctx.Args()
 	if len(args) != 2 && len(args) != 3 {
@@ -90,7 +91,6 @@ func doGenSudi(ctx *cli.Context) error {
 		return errors.Wrapf(err, "Failed creating new SUDI directory")
 	}
 
-
 	if err := SignCert(&certTmpl, caCert, caKey, snPath); err != nil {
 		os.RemoveAll(snPath)
 		return errors.Wrapf(err, "Failed creating new SUDI keypair")
@@ -134,7 +134,7 @@ func doListSudi(ctx *cli.Context) error {
 	}
 
 	dir := filepath.Join(projPath, "sudi")
-	serials,  err := os.ReadDir(dir)
+	serials, err := os.ReadDir(dir)
 	if err != nil {
 		return fmt.Errorf("Failed reading sudi directory %q: %w", dir, err)
 	}

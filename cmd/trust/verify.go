@@ -9,17 +9,17 @@ import (
 )
 
 var verifyCmd = cli.Command{
-	Name: "verify",
+	Name:  "verify",
 	Usage: "Verify a digital Signature",
 	Subcommands: []cli.Command{
 		cli.Command{
-			Name: "efi",
-			Action: doVerifyEFI,
-			Usage: "verify a signed efi binary",
+			Name:      "efi",
+			Action:    doVerifyEFI,
+			Usage:     "verify a signed efi binary",
 			ArgsUsage: "<signed-efi-file>",
 			Flags: []cli.Flag{
 				cli.StringFlag{
-					Name: "cert",
+					Name:  "cert",
 					Usage: "The X509 certificate to verify signature.",
 				},
 			},

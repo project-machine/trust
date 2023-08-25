@@ -18,6 +18,7 @@ import (
 const ShimLockGUID = "605dab50-e046-4300-abb6-3dd810dd8b23"
 const ShimVendordbGUID = "00000000-0000-0000-0000-000000000000"
 const SBAT = "sbat,1,2021030218\012"
+
 // Using DBX data from current ovmf_vars.fd in bootkit.
 // Revisit if ovmf or dbx changes. We need to eventually manage dbx.
 const DBX = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
@@ -49,7 +50,7 @@ func getCertGUID(guidfile string) (efi.GUID, error) {
 		return efi.GUID{}, fmt.Errorf("Failed to read %q: (%w)", guidfile, err)
 	}
 	certGuid, err := efi.DecodeGUIDString(string(cGuid))
-	if  err != nil {
+	if err != nil {
 		return efi.GUID{}, fmt.Errorf("Failed to decode the guid in %q: (%w)", guidfile, err)
 	}
 
@@ -183,14 +184,14 @@ func getHash(unicodeName string, varGuid efi.GUID, keysetPath string) ([]byte, e
 
 func ComputePCR7(keysetName string) ([]byte, []byte, []byte, error) {
 	var pcr7Val = []byte{00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00,
-						 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00,
-						 00, 00, 00, 00, 00, 00, 00, 00, 00, 00}
+		00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00,
+		00, 00, 00, 00, 00, 00, 00, 00, 00, 00}
 
 	// List of uefi Secure boot vars that get measured.
 	// It includes certs that get measured at boot. UKI certs are measured
 	// separately since we have 3 possible. Also measured in this order.
-	var uefiMeasured = []string{"SecureBoot", "PK", "KEK", "db", "dbx","separator",
-								"shim-cert", "SbatLevel", "MokListTrusted" }
+	var uefiMeasured = []string{"SecureBoot", "PK", "KEK", "db", "dbx", "separator",
+		"shim-cert", "SbatLevel", "MokListTrusted"}
 
 	shimLockGuid, err := efi.DecodeGUIDString(ShimLockGUID)
 	if err != nil {
