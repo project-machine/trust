@@ -307,7 +307,7 @@ func findSection(lines []string, which string) (int64, int64, bool) {
 }
 
 func extractObj(objdump []string, dir string, piece string) error {
-	outName := filepath.Join(dir, piece + ".out")
+	outName := filepath.Join(dir, piece+".out")
 	offset, size, found := findSection(objdump, piece)
 	if !found {
 		return fmt.Errorf("Symbol %s not found", piece)
@@ -387,7 +387,7 @@ func ReplaceManifestCert(dir, newCert string) (string, error) {
 	}
 
 	err := RunCommand("objcopy",
-		"--add-section=.initrd=" + initrdgz,
+		"--add-section=.initrd="+initrdgz,
 		"--change-section-vma=.initrd=0x3000000",
 		k2, kret)
 	if err != nil {

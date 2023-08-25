@@ -1,11 +1,11 @@
 package main
 
 import (
-	"os"
 	"errors"
+	"os"
 
-	"github.com/urfave/cli"
 	"github.com/project-machine/trust/pkg/trust"
+	"github.com/urfave/cli"
 )
 
 var tpmPolicyGenCmd = cli.Command{

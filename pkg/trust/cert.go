@@ -10,8 +10,8 @@ import (
 	"os"
 
 	"github.com/foxboron/go-uefi/efi/pecoff"
-	"github.com/foxboron/go-uefi/efi/util"
 	"github.com/foxboron/go-uefi/efi/pkcs7"
+	"github.com/foxboron/go-uefi/efi/util"
 )
 
 // VerifyCert checks that the product cert was signed by the
@@ -145,7 +145,7 @@ func SignEFI(sourcePath, signedPath, keyPath, certPath string) error {
 	// Get the key to use for signing
 	privkey, err := util.ReadKeyFromFile(keyPath)
 	if err != nil {
-		return fmt.Errorf("Failed reading (%q): %w", keyPath,  err)
+		return fmt.Errorf("Failed reading (%q): %w", keyPath, err)
 	}
 	cert, err := util.ReadCertFromFile(certPath)
 	if err != nil {

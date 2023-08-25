@@ -1,8 +1,8 @@
 package main
 
 import (
-	"github.com/urfave/cli"
 	"github.com/project-machine/trust/pkg/trust"
+	"github.com/urfave/cli"
 )
 
 var extendPCR7Cmd = cli.Command{

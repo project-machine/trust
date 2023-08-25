@@ -40,7 +40,7 @@ func GenLuksPolicy(prodPcr7 []byte, policyVersion string) ([]byte, error) {
 	// Create a tpm2.NVPublic structure that resembles what we would have
 	// done via an nvwrite of the policy version to the index.
 	// Include TPMA_NV_WRITTEN attribute indicating the index has been written to.
-	nvpub := tpm2.NVPublic{Index: tpm2.Handle(TPM2IndexEAVersion), NameAlg: tpm2.HashAlgorithmSHA256, Attrs: tpm2.NVTypeOrdinary.WithAttrs(tpm2.AttrNVOwnerWrite|tpm2.AttrNVOwnerRead|tpm2.AttrNVAuthRead|tpm2.AttrNVWritten), Size: 4}
+	nvpub := tpm2.NVPublic{Index: tpm2.Handle(TPM2IndexEAVersion), NameAlg: tpm2.HashAlgorithmSHA256, Attrs: tpm2.NVTypeOrdinary.WithAttrs(tpm2.AttrNVOwnerWrite | tpm2.AttrNVOwnerRead | tpm2.AttrNVAuthRead | tpm2.AttrNVWritten), Size: 4}
 
 	trial := util.ComputeAuthPolicy(tpm2.HashAlgorithmSHA256)
 	trial.PolicyPCR(pcrDigest, tpm2.PCRSelectionList{{Hash: tpm2.HashAlgorithmSHA256, Select: []int{7}}})

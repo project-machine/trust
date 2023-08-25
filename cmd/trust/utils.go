@@ -6,16 +6,16 @@ import (
 	"crypto/sha1"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"encoding/pem"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"math/big"
 	"os"
 	"path/filepath"
-	"time"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
@@ -490,9 +490,9 @@ func addPcr7data(keysetName string, pdata pcr7Data) error {
 	var tpmpolAdminpubkey, tpmpolLukspubkey *rsa.PublicKey
 	var jsonInfo []byte
 	type PCR7info struct {
-		Key string `json:"key"`
+		Key     string `json:"key"`
 		KeyType string `json:"key_type"`
-		Date string `json:"est_date"`
+		Date    string `json:"est_date"`
 		Comment string `json:"comment"`
 	}
 
@@ -522,7 +522,7 @@ func addPcr7data(keysetName string, pdata pcr7Data) error {
 	pcr7dataPath := filepath.Join(keysetPath, "pcr7data/policy-2")
 	if !PathExists(pcr7dataPath) {
 		err = os.MkdirAll(keysetPath, 0750)
-		if err != nil  {
+		if err != nil {
 			return err
 		}
 	} else {
@@ -554,7 +554,7 @@ func addPcr7data(keysetName string, pdata pcr7Data) error {
 	}
 	tpmpolLukspubkey, err = extractPubkey(filepath.Join(keysetPath, "tpmpol-luks/cert.pem"))
 	if err != nil {
-		return  err
+		return err
 	}
 	err = savePubkeytoFile(tpmpolLukspubkey, filepath.Join(pcr7dataPubkeys, "luks-snakeoil.pem"))
 	if err != nil {
@@ -589,18 +589,18 @@ func addPcr7data(keysetName string, pdata pcr7Data) error {
 		date := time.Now()
 		formatted := date.Format("2006-01-02")
 		timestamp := strings.ReplaceAll(formatted, "-", "")
-		info := &PCR7info{Key: keysetName, KeyType: pcr, Date: timestamp, Comment: "mos"+" "+keysetName}
+		info := &PCR7info{Key: keysetName, KeyType: pcr, Date: timestamp, Comment: "mos" + " " + keysetName}
 		jsonInfo, err = json.Marshal(info)
 		if err != nil {
 			return err
 		}
 		if err = os.WriteFile(jsonFile, jsonInfo, 0644); err != nil {
-				return err
+			return err
 		}
 
 		// write out info
 		switch pcr {
-		case "limited" :
+		case "limited":
 			pcrFile := filepath.Join(indexdir, "pcr_limited.bin")
 			if err = os.WriteFile(pcrFile, pdata.limited, 0644); err != nil {
 				return err
@@ -613,7 +613,7 @@ func addPcr7data(keysetName string, pdata pcr7Data) error {
 			if err = os.WriteFile(pcrFile, pdata.production, 0644); err != nil {
 				return err
 			}
-		case "tpm" :
+		case "tpm":
 			// Create policy file and Sign the policy
 			policyFile := filepath.Join(indexdir, "tpm_passwd.policy.signed")
 			if err = os.WriteFile(policyFile, pdata.passwdPolicyDigest, 0644); err != nil {
@@ -623,7 +623,7 @@ func addPcr7data(keysetName string, pdata pcr7Data) error {
 			if err = trust.Sign(policyFile, policyFile, signingKey); err != nil {
 				return err
 			}
-		case "production" :
+		case "production":
 			// Sign the policy
 			policyFile := filepath.Join(indexdir, "tpm_luks.policy.signed")
 			if err = os.WriteFile(policyFile, pdata.luksPolicyDigest, 0644); err != nil {
@@ -633,7 +633,7 @@ func addPcr7data(keysetName string, pdata pcr7Data) error {
 			if err = trust.Sign(policyFile, policyFile, signingKey); err != nil {
 				return err
 			}
-		default :
+		default:
 			return errors.New("Unrecognized uki key")
 		}
 	}

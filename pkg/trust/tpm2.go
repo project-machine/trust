@@ -40,16 +40,16 @@ func init() {
 }
 
 type tpm2V3Context struct {
-	dataDir        string  // our data directory under which we keep files
-	keyClass       string  // release, dev, or snakeoil
-	adminPwd       string  // provisioned tpm admin password
-	pubkeyName     string  // pubkeyname from tpm2_loadexternal
-	pubkeyContext  string  // pubkeycontext from tpm2_loadexternal
-	tmpDir         string  // directory for tpm2 sessions and other io
-	sessionFile    string
-	Keyctx         string  // pathname to file from tpm2_createprimary
-	PlainPart      *DiskPart // Disk partition with plaintext provisioned data
-	CryptPart      *DiskPart // Disk partition with encrypted provisioned data
+	dataDir       string // our data directory under which we keep files
+	keyClass      string // release, dev, or snakeoil
+	adminPwd      string // provisioned tpm admin password
+	pubkeyName    string // pubkeyname from tpm2_loadexternal
+	pubkeyContext string // pubkeycontext from tpm2_loadexternal
+	tmpDir        string // directory for tpm2 sessions and other io
+	sessionFile   string
+	Keyctx        string    // pathname to file from tpm2_createprimary
+	PlainPart     *DiskPart // Disk partition with plaintext provisioned data
+	CryptPart     *DiskPart // Disk partition with encrypted provisioned data
 }
 
 type DiskPart struct {
@@ -140,11 +140,13 @@ func getPoldir(pdir string) string {
 }
 
 // ChooseSignData: assumes that someone has placed the pcr7data
-//  under SignDataDir (/pcr7data).  Finds the pcr7 data for the
-//  running host+shim+kernel.
+//
+//	under SignDataDir (/pcr7data).  Finds the pcr7 data for the
+//	running host+shim+kernel.
+//
 // Returns:
-//    1. the signdata directory name for this host's pcr7 value
-//    2. the type of key this was signed by (e.g. "production")
+//  1. the signdata directory name for this host's pcr7 value
+//  2. the type of key this was signed by (e.g. "production")
 func ChooseSignData() (string, string, error) {
 	polDir := getPoldir(SignDataDir)
 	if polDir == "" {
@@ -249,9 +251,9 @@ func NewTpm2() (*tpm2V3Context, error) {
 	}
 
 	t = &tpm2V3Context{
-		dataDir:        dataDir,
-		tmpDir:         tmpd,
-		keyClass:       keyClass,
+		dataDir:  dataDir,
+		tmpDir:   tmpd,
+		keyClass: keyClass,
 	}
 	return t, nil
 }
@@ -306,7 +308,7 @@ func setupFactory() (string, error) {
 	}
 
 	err = os.Mkdir(dest, 0700)
-	if err !=  nil {
+	if err != nil {
 		return dest, fmt.Errorf("Could not create %s on tmpfs: %w", dest, err)
 	}
 	return dest, nil
@@ -322,6 +324,7 @@ func (t *tpm2V3Context) Close() {
 }
 
 type KeyType string
+
 const (
 	limitedKey    KeyType = "limited"
 	productionKey KeyType = "production"

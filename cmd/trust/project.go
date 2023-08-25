@@ -93,7 +93,7 @@ func doListProjects(ctx *cli.Context) error {
 		return nil
 	}
 
-	dirs,  err := os.ReadDir(keysetPath)
+	dirs, err := os.ReadDir(keysetPath)
 	if err != nil {
 		return fmt.Errorf("Failed reading keys directory %q: %w", trustDir, err)
 	}

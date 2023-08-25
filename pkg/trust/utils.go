@@ -85,7 +85,7 @@ func genPassphrase(nchars int) (string, error) {
 	// trust-.  So if we want 39 or 40 characters, request (39-6)/2+1 = 17
 	// bytes, giving us 136 bits of randomness.
 
-	nbytes := (nchars - 6) / 2 + 1
+	nbytes := (nchars-6)/2 + 1
 	rand, err := HWRNGRead(nbytes)
 	if err != nil {
 		return "", err
@@ -157,11 +157,11 @@ func RunWithStdall(stdinString string, args ...string) (string, string, error) {
 // Run: run a command.  Return the output and an error if any.
 func Run(args ...string) (string, error) {
 	cmd := exec.Command(args[0], args[1:]...)
-        output, err := cmd.CombinedOutput()
-        if err != nil {
-                return string(output), errors.Wrapf(err, "Failed running %v", args)
-        }
-        return string(output), nil
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return string(output), errors.Wrapf(err, "Failed running %v", args)
+	}
+	return string(output), nil
 }
 
 func RunCommand(args ...string) error {
