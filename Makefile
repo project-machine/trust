@@ -5,9 +5,19 @@ ifeq ($(MAIN_VERSION),$(filter $(MAIN_VERSION), "", no-git))
 $(error "Bad value for MAIN_VERSION: '$(MAIN_VERSION)'")
 endif
 
+GO_SRC_DIRS := pkg/ cmd/
+GO_SRC := $(shell find $(GO_SRC_DIRS) -name "*.go")
+
 VERSION_LDFLAGS=-X github.com/project-machine/trust/pkg/trust.Version=$(MAIN_VERSION)
-trust: cmd/trust/*.go pkg/trust/*.go pkg/printdirtree/*.go
+trust: .made-gofmt $(GO_SRC)
 	go build -buildvcs=false -ldflags "$(VERSION_LDFLAGS)" -o trust ./cmd/trust/
+
+.PHONY: gofmt
+gofmt: .made-gofmt
+.made-gofmt: $(GO_SRC)
+	o=$$(gofmt -l -w $(GO_SRC_DIRS) 2>&1) && [ -z "$$o" ] || \
+		{ echo "gofmt made changes: $$o" 1>&2; exit 1; }
+	@touch $@
 
 clean:
 	rm -f trust
