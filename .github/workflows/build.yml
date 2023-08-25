@@ -20,6 +20,9 @@ jobs:
             libdevmapper-dev libacl1-dev libarchive-tools pip squashfs-tools \
             sbsigntool
           pip install virt-firmware
+      - name: lint
+        run: |
+          make gofmt
       - name: build
         run: |
           make
