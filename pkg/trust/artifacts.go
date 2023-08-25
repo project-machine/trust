@@ -2,6 +2,7 @@ package trust
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -143,10 +144,7 @@ func UpdateShim(inShim, newShim, keysetPath string) error {
 		return errors.Wrapf(err, "Failed LoadSignatureDataDirs")
 	}
 
-	err = RunCommand("sbattach", "--remove", inShim)
-	if err != nil {
-		return errors.Wrapf(err, "failed stripping signature from shim")
-	}
+	// Note, we are not doing sbattach --remove since we now ship without a signature
 
 	err = shim.SetVendorDB(inShim, cert.NewEFISignatureDatabase(sigdataList),
 		cert.NewEFISignatureDatabase([]*efi.SignatureData{}))
@@ -224,14 +222,14 @@ func SetupBootkit(keysetName, bootkitVersion string) error {
 		return errors.Wrapf(err, "Failed creating directory %q", destDir)
 	}
 
-	unchanged := []string{"boot.tar", "modules.squashfs", "ovmf-code.fd", "ovmf-vars-empty.fd"}
+	unchanged := []string{"kernel/modules.squashfs", "ovmf/ovmf-code.fd"}
 	for _, f := range unchanged {
 		if err := CopyFile(filepath.Join(bDir, f), filepath.Join(destDir, f)); err != nil {
 			return errors.Wrapf(err, "Failed copying %s into new bootkit from %s -> %s", f, bDir, destDir)
 		}
 	}
 
-	err = UpdateShim(filepath.Join(bDir, "shim.efi"), filepath.Join(destDir, "shim.efi"), keysetPath)
+	err = UpdateShim(filepath.Join(bDir, "shim", "shim.efi"), filepath.Join(destDir, "shim.efi"), keysetPath)
 	if err != nil {
 		return errors.Wrapf(err, "Failed updating the shim")
 	}
@@ -324,74 +322,89 @@ func extractObj(objdump []string, dir string, piece string) error {
 	return nil
 }
 
-// extract the pieces of kernel.efi that we want to known names
-func extractObjs(dir string) error {
-	kName := filepath.Join(dir, "kernel.efi")
-	stdout, stderr, err := RunWithStdall("", "objdump", "-h", kName)
+func appendToFile(dest, src string) error {
+	from, err := os.Open(src)
 	if err != nil {
-		return errors.Wrapf(err, "Failed running objdump:\n stdout: %s\nstderr: %s", stdout, stderr)
+		return errors.Wrapf(err, "Failed to open %s", src)
 	}
-	lines := strings.Split(string(stdout), "\n")
-	//pieces := []string{"sbat", "cmdline", "initrd", "linux"}
-	// Actually we only need the initrd, I believe
-	pieces := []string{"initrd"}
-	for _, piece := range pieces {
-		if err := extractObj(lines, dir, piece); err != nil {
-			return errors.Wrapf(err, "Failed extracting %s", piece)
-		}
+	defer from.Close()
+	to, err := os.OpenFile(dest, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return errors.Wrapf(err, "Failed to open %q for writing", dest)
+	}
+	defer to.Close()
+
+	if _, err = io.Copy(to, from); err != nil {
+		return errors.Wrapf(err, "Failed to copy from %q to %q", src, dest)
 	}
 	return nil
 }
 
-// Given a tempdir with a kernel.efi, take apart the kernel.efi.  In its
-// initrd, replace /manifestCert.pem with the newcert argument.  Rebuild
-// into a new kernel.efi and return that filename.  Note that the filename
+// Given a tempdir with bootkit artifacts, update it for our keyset.  In
+// initrd, add newcert as /manifestCert.pem.  Build
+// a new kernel.efi and return that filename.  Note that the filename
 // will always be ${dir}/newkernel.efi, but whatever.
 func ReplaceManifestCert(dir, newCert string) (string, error) {
-	if err := extractObjs(dir); err != nil {
-		return "", errors.Wrapf(err, "Failed extracting objects")
-	}
-	initrd := filepath.Join(dir, "initrd")
-	initrdgz := initrd + ".gz"
-	os.Rename(filepath.Join(dir, "initrd.out"), initrdgz)
-	if err := RunCommand("gunzip", initrdgz); err != nil {
-		return "", errors.Wrapf(err, "Failed unzipping initrd.gz")
-	}
 	emptydir := filepath.Join(dir, "empty")
 	if err := EnsureDir(emptydir); err != nil {
 		return "", errors.Wrapf(err, "Failed creating empty directory")
 	}
+	initrd := filepath.Join(dir, "initrd.new")
+	initrdgz := initrd + ".gz"
 
 	if err := CopyFile(newCert, filepath.Join(emptydir, "manifestCA.pem")); err != nil {
 		return "", errors.Wrapf(err, "Failed copying manifest into empty dir")
 	}
 
-	bashcmd := "cd " + emptydir + "; echo ./manifestCA.pem | cpio --create --owner=+0:+0 -H newc --quiet >> " + filepath.Join(dir, "initrd")
+	bashcmd := "cd " + emptydir + "; echo ./manifestCA.pem | cpio --create --owner=+0:+0 -H newc --quiet > " + filepath.Join(dir, "newcert.initrd")
 	if err := RunCommand("/bin/bash", "-c", bashcmd); err != nil {
-		return "", errors.Wrapf(err, "Failed extracting initrd")
+		return "", errors.Wrapf(err, "Failed creating new manifest initrd piece")
+	}
+
+	// Collect the pieces (bootkit api should do this for us)
+	files := []string{
+		filepath.Join(dir, "initrd/firmware.cpio.gz"),
+		filepath.Join(dir, "initrd/core.cpio.gz"),
+		filepath.Join(dir, "kernel/initrd-modules.cpio.gz"),
+		filepath.Join(dir, "mos/initrd-mos.cpio.gz"),
+		filepath.Join(dir, "newcert.initrd"),
+	}
+	for _, f := range files {
+		if strings.HasSuffix(f, ".gz") {
+			if err := RunCommand("gunzip", f); err != nil {
+				return "", errors.Wrapf(err, "Failed gunzipping %s", f)
+			}
+		}
+		f = strings.TrimSuffix(f, ".gz")
+		if err := appendToFile(initrd, f); err != nil {
+			return "", errors.Wrapf(err, "Failed appending %s to initrd", f)
+		}
 	}
 
 	if err := RunCommand("gzip", initrd); err != nil {
 		return "", errors.Wrapf(err, "Failed re-zipping initrd.gz")
 	}
 
-	// Now build a new kernel.efi using the new initrd.gz
-	k1 := filepath.Join(dir, "kernel.efi")
-	if err := RunCommand("sbattach", "--remove", k1); err != nil {
-		return "", errors.Wrapf(err, "Failed removing signature from original kernel.efi")
-	}
-	k2 := filepath.Join(dir, "kernel.tmp")
+	// Now build a kernel.efi
+
 	kret := filepath.Join(dir, "newkernel.efi")
-	if err := RunCommand("objcopy", "--remove-section=.initrd", k1, k2); err != nil {
-		return "", errors.Wrapf(err, "Failed removing old initrd from kernel.efi")
+	cmd := []string{
+		"objcopy",
+		"--add-section=.cmdline=/dev/null",
+		"--change-section-vma=.cmdline=0x30000",
+		"--add-section=.sbat=" + filepath.Join(dir, "stubby/sbat.csv"),
+		"--change-section-vma=.sbat=0x50000",
+		"--set-section-alignment=.sbat=512",
+		"--add-section=.linux=" + filepath.Join(dir, "kernel/boot/vmlinuz"),
+		"--change-section-vma=.linux=0x1000000",
+		"--add-section=.initrd=" + initrdgz,
+		"--change-section-vma=.initrd=0x3000000",
+		filepath.Join(dir, "stubby/stubby.efi"),
+		kret,
+	}
+	if err := RunCommand(cmd...); err != nil {
+		return "", errors.Wrapf(err, "Failed creating kernel.efi")
 	}
 
-	err := RunCommand("objcopy",
-		"--add-section=.initrd="+initrdgz,
-		"--change-section-vma=.initrd=0x3000000",
-		k2, kret)
-	if err != nil {
-		return "", errors.Wrapf(err, "Failed inserting new initrd into kernel.efi")
-	}
 	return kret, nil
 }
