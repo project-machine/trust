@@ -163,7 +163,7 @@ func UpdateShim(inShim, newShim, keysetPath string) error {
 	return nil
 }
 
-func SetupBootkit(keysetName string) error {
+func SetupBootkit(keysetName, bootkitVersion string) error {
 	// TODO - we have to fix this by
 	// a. having bootkit generate arm64
 	// b. changing the bootkit layer naming to reflect arch
@@ -185,7 +185,7 @@ func SetupBootkit(keysetName string) error {
 		return errors.Wrapf(err, "couldn't find home dir")
 	}
 	ociDir := filepath.Join(home, ".cache", "machine", "trust", "bootkit", "oci")
-	bootkitLayer := "bootkit:0.0.5.230327-squashfs"
+	bootkitLayer := "bootkit:" + bootkitVersion + "-squashfs"
 	EnsureDir(ociDir)
 	cachedOci := fmt.Sprintf("oci:%s:%s", ociDir, bootkitLayer)
 	err = lib.ImageCopy(lib.ImageCopyOpts{

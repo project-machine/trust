@@ -253,6 +253,11 @@ var keysetCmd = cli.Command{
 					Name:  "org, Org, organization",
 					Usage: "X509-Organization field to add to certificates when generating a new keyset. (optional)",
 				},
+				cli.StringFlag{
+					Name:  "bootkit-version",
+					Usage: "Version of bootkit artifacts to use",
+					Value: trust.BootkitVersion,
+				},
 			},
 		},
 		{
@@ -315,6 +320,7 @@ func doAddKeyset(ctx *cli.Context) error {
 		return errors.New("Please specify keyset name")
 	}
 
+	bootkitVersion := ctx.String("bootkit-version")
 	Org := ctx.StringSlice("org")
 	if Org == nil {
 		log.Infof("X509-Organization field for new certificates not specified.")
@@ -346,7 +352,7 @@ func doAddKeyset(ctx *cli.Context) error {
 	}
 
 	// Now create the bootkit artifacts
-	if err = trust.SetupBootkit(keysetName); err != nil {
+	if err = trust.SetupBootkit(keysetName, bootkitVersion); err != nil {
 		return fmt.Errorf("Failed creating bootkit artifacts for keyset %q: (%w)", keysetName, err)
 	}
 
