@@ -438,15 +438,7 @@ func createPCR7Index(pcr7Val []byte) (string, error) {
 }
 
 func extractPubkey(certPath string) (*rsa.PublicKey, error) {
-	certPEM, err := os.ReadFile(certPath)
-	if err != nil {
-		return nil, err
-	}
-	block, _ := pem.Decode([]byte(certPEM))
-	if block == nil {
-		return nil, fmt.Errorf("Failed to decode the certificate (%q)", certPath)
-	}
-	parsedCert, err := x509.ParseCertificate(block.Bytes)
+	parsedCert, err := readCertificateFromFile(certPath)
 	if err != nil {
 		return nil, err
 	}
