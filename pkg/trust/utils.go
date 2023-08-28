@@ -189,3 +189,17 @@ func getMosKeyPath() (string, error) {
 	}
 	return filepath.Join(dataDir, "machine", "trust", "keys"), nil
 }
+
+// Just create a cpio file.  @path will be the top level directory
+// or the file in the new cpio file index.
+func NewCpio(cpio, path string) error {
+	parent := filepath.Dir(path)
+	target := filepath.Base(path)
+
+	bashcmd := "cd " + parent + "; find " + target + "| cpio --create --owner=+0:+0 -H newc --quiet > " + cpio
+	if err := RunCommand("/bin/bash", "-c", bashcmd); err != nil {
+		return errors.Wrapf(err, "Failed creating cpio of %s -> %s", path, cpio)
+	}
+
+	return nil
+}

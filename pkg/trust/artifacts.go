@@ -234,8 +234,8 @@ func SetupBootkit(keysetName, bootkitVersion string) error {
 		return errors.Wrapf(err, "Failed updating the shim")
 	}
 
-	// break apart kernel.efi to replace the manifestCert.pem
-	newKernel, err := ReplaceManifestCert(bDir, filepath.Join(keysetPath, "manifest-ca", "cert.pem"))
+	// break apart kernel.efi to replace the manifestCA.pem
+	newKernel, err := ReplaceManifestCert(bDir, keysetPath)
 	if err != nil {
 		return errors.Wrapf(err, "Failed replacing manifest certificate")
 	}
@@ -341,24 +341,40 @@ func appendToFile(dest, src string) error {
 }
 
 // Given a tempdir with bootkit artifacts, update it for our keyset.  In
-// initrd, add newcert as /manifestCert.pem.  Build
+// initrd, add newcert as /manifestCA.pem.  Build
 // a new kernel.efi and return that filename.  Note that the filename
 // will always be ${dir}/newkernel.efi, but whatever.
-func ReplaceManifestCert(dir, newCert string) (string, error) {
-	emptydir := filepath.Join(dir, "empty")
-	if err := EnsureDir(emptydir); err != nil {
-		return "", errors.Wrapf(err, "Failed creating empty directory")
+func ReplaceManifestCert(dir, keysetPath string) (string, error) {
+	newCert := filepath.Join(keysetPath, "manifest-ca", "cert.pem")
+
+	pcr7Dir := filepath.Join(keysetPath, "pcr7data")
+	if !PathExists(pcr7Dir) {
+		return "", fmt.Errorf("No pcr7data found")
 	}
+	pcr7Cpio := pcr7Dir + ".cpio"
+	if !PathExists(pcr7Cpio) {
+		if err := NewCpio(pcr7Cpio, pcr7Dir); err != nil {
+			return "", errors.Wrapf(err, "Failed creating pcr7 cpio for %s", filepath.Base(keysetPath))
+		}
+	}
+
 	initrd := filepath.Join(dir, "initrd.new")
 	initrdgz := initrd + ".gz"
+	certCpio := filepath.Join(dir, "newcert.initrd")
 
-	if err := CopyFile(newCert, filepath.Join(emptydir, "manifestCA.pem")); err != nil {
+	emptydir, err := os.MkdirTemp("", "trust-cpio")
+	if err != nil {
+		return "", err
+	}
+	defer os.RemoveAll(emptydir)
+
+	manifestCA := filepath.Join(emptydir, "manifestCA.pem")
+	if err := CopyFile(newCert, manifestCA); err != nil {
 		return "", errors.Wrapf(err, "Failed copying manifest into empty dir")
 	}
 
-	bashcmd := "cd " + emptydir + "; echo ./manifestCA.pem | cpio --create --owner=+0:+0 -H newc --quiet > " + filepath.Join(dir, "newcert.initrd")
-	if err := RunCommand("/bin/bash", "-c", bashcmd); err != nil {
-		return "", errors.Wrapf(err, "Failed creating new manifest initrd piece")
+	if err := NewCpio(certCpio, manifestCA); err != nil {
+		return "", errors.Wrapf(err, "Failed creating cpio archive of manifest cert")
 	}
 
 	// Collect the pieces (bootkit api should do this for us)
@@ -367,7 +383,8 @@ func ReplaceManifestCert(dir, newCert string) (string, error) {
 		filepath.Join(dir, "initrd/core.cpio.gz"),
 		filepath.Join(dir, "kernel/initrd-modules.cpio.gz"),
 		filepath.Join(dir, "mos/initrd-mos.cpio.gz"),
-		filepath.Join(dir, "newcert.initrd"),
+		pcr7Cpio,
+		certCpio,
 	}
 	for _, f := range files {
 		if strings.HasSuffix(f, ".gz") {
