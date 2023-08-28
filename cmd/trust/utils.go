@@ -540,7 +540,8 @@ func addPcr7data(keysetName string, pdata pcr7Data) error {
 	if err != nil {
 		return err
 	}
-	err = savePubkeytoFile(tpmpolAdminpubkey, filepath.Join(pcr7dataPubkeys, "tpmpass-snakeoil.pem"))
+	destpath := filepath.Join(pcr7dataPubkeys, fmt.Sprintf("tpmpass-%s.pem", keysetName))
+	err = savePubkeytoFile(tpmpolAdminpubkey, destpath)
 	if err != nil {
 		return err
 	}
@@ -548,7 +549,9 @@ func addPcr7data(keysetName string, pdata pcr7Data) error {
 	if err != nil {
 		return err
 	}
-	err = savePubkeytoFile(tpmpolLukspubkey, filepath.Join(pcr7dataPubkeys, "luks-snakeoil.pem"))
+
+	destpath = filepath.Join(pcr7dataPubkeys, fmt.Sprintf("luks-%s.pem", keysetName))
+	err = savePubkeytoFile(tpmpolLukspubkey, destpath)
 	if err != nil {
 		return err
 	}
