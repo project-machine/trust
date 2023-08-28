@@ -338,7 +338,7 @@ func doAddKeyset(ctx *cli.Context) error {
 	}
 
 	switch keysetName {
-	case keysetName:
+	case "snakeoil":
 		// git clone if keyset is snakeoil
 		_, err = git.PlainClone(keysetPath, false, &git.CloneOptions{URL: "https://github.com/project-machine/keys.git"})
 
