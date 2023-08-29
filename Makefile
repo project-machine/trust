@@ -5,7 +5,7 @@ ifeq ($(MAIN_VERSION),$(filter $(MAIN_VERSION), "", no-git))
 $(error "Bad value for MAIN_VERSION: '$(MAIN_VERSION)'")
 endif
 
-BOOTKIT_VERSION ?= "v0.0.10.230825"
+BOOTKIT_VERSION ?= "v0.0.14.230901"
 
 GO_SRC_DIRS := pkg/ cmd/
 GO_SRC := $(shell find $(GO_SRC_DIRS) -name "*.go")

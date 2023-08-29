@@ -1303,10 +1303,8 @@ github.com/posener/complete v1.1.1/go.mod h1:em0nMJCgc9GFtwrmVmEMR/ZL6WyhyjMBndr
 github.com/posener/complete v1.2.3/go.mod h1:WZIdtGGp+qx0sLrYKtIRAruyNpv6hFCicSgv7Sy7s/s=
 github.com/pquerna/cachecontrol v0.0.0-20160421231612-c97913dcbd76/go.mod h1:prYjPmNq4d1NPVmpShWobRqXY3q7Vp+80DqgxxUrUIA=
 github.com/pquerna/cachecontrol v0.0.0-20171018203845-0dec1b30a021/go.mod h1:prYjPmNq4d1NPVmpShWobRqXY3q7Vp+80DqgxxUrUIA=
-github.com/project-machine/bootkit v0.0.8 h1:q5IgdtTh1IgLoABYcOMF7ZH63MnKswRx3UjaclKUMa0=
-github.com/project-machine/bootkit v0.0.8/go.mod h1:02BdQ6/ClxWdwPOIVYxpRNJIJD2eFcg8iz2Q1phJchU=
-github.com/project-machine/bootkit/pkg v0.0.0-20230818154130-14a2a0d52a86 h1:K40McibidEeV4uRvQ06X4g8yZ3LZbZ+s05PVBZLlFCI=
-github.com/project-machine/bootkit/pkg v0.0.0-20230818154130-14a2a0d52a86/go.mod h1:yD4nVL+Qy+8qNy6anta43/xxP7l9jd6JvBUS6oRG7Cc=
+github.com/project-machine/bootkit v0.0.14 h1:wtvB96sWza4O1ZD03qjZVHM7SpmF5y9RVUu4Q0aiHwo=
+github.com/project-machine/bootkit v0.0.14/go.mod h1:02BdQ6/ClxWdwPOIVYxpRNJIJD2eFcg8iz2Q1phJchU=
 github.com/project-stacker/stacker v0.21.2 h1:tw9v0sxqnA1mNyxZzhTEIN2aKSbtRHWbGXVRPhrGic4=
 github.com/project-stacker/stacker v0.21.2/go.mod h1:xsbL+v+8WKoY6k1/zxI3iB9sLp+AnmKfMc93YbFWQNc=
 github.com/prometheus/client_golang v0.0.0-20180209125602-c332b6f63c06/go.mod h1:7SWBe2y4D6OKWSNQJUaRYU/AaXPKyh/dDVn+NZz0KFw=
