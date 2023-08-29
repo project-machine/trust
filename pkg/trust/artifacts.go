@@ -240,8 +240,8 @@ func SetupBootkit(keysetName, bootkitVersion string) error {
 		return errors.Wrapf(err, "Failed replacing manifest certificate")
 	}
 	cmd := []string{"sbsign",
-		"--key", filepath.Join(keysetPath, "uki-limited", "privkey.pem"),
-		"--cert", filepath.Join(keysetPath, "uki-limited", "cert.pem"),
+		"--key", filepath.Join(keysetPath, "uki-production", "privkey.pem"),
+		"--cert", filepath.Join(keysetPath, "uki-production", "cert.pem"),
 		"--output", filepath.Join(destDir, "kernel.efi"),
 		newKernel}
 	err = RunCommand(cmd...)
