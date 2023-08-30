@@ -267,10 +267,11 @@ func SetupBootkit(keysetName, bootkitVersion string) error {
 	dbGuid := strings.TrimSpace(string(dbGuidBytes))
 
 	outFile := filepath.Join(destDir, "ovmf-vars.fd")
+	plainvars := filepath.Join(bDir, "ovmf", "ovmf-vars.fd")
 	cmd = []string{
 		"virt-fw-vars",
-		"--input=/usr/share/OVMF/OVMF_VARS.fd",
-		"--output", outFile,
+		"--input=" + plainvars,
+		"--output=" + outFile,
 		"--secure-boot", "--no-microsoft",
 		"--set-pk", pkGuid, filepath.Join(keysetPath, "uefi-pk", "cert.pem"),
 		"--add-kek", kekGuid, filepath.Join(keysetPath, "uefi-kek", "cert.pem"),
