@@ -15,7 +15,7 @@ require (
 	github.com/opencontainers/umoci v0.4.8-0.20220412065115-12453f247749
 	github.com/pkg/errors v0.9.1
 	github.com/plus3it/gorecurcopy v0.0.1
-	github.com/project-machine/bootkit v0.0.14
+	github.com/project-machine/bootkit v0.0.15
 	github.com/project-stacker/stacker v0.21.2
 	github.com/stretchr/testify v1.7.1
 	github.com/urfave/cli v1.22.10
