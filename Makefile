@@ -30,3 +30,4 @@ test: trust
 	bats tests/keyset.bats
 	bats tests/project.bats
 	bats tests/sudi.bats
+	bats tests/policygen.bats
