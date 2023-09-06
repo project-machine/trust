@@ -1,5 +1,10 @@
 # Trust
 
+The trust repo is archived.  The code has been moved into
+https://github.com/project-machine/mos.
+
+# Legacy
+
 Trust provides secure unattended boot of systems (hardware and virtual
 machines).  It protects the keys for encrypted filesystem, as well as
 a per-machine provisioned certificate/keypair.  It ensures that only an
